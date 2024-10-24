@@ -1,60 +1,29 @@
-# CSDI
-This is the github repository for the NeurIPS 2021 paper "[CSDI: Conditional Score-based Diffusion Models for Probabilistic Time Series Imputation](https://arxiv.org/abs/2107.03502)".
+# CSDI + Time Weaver
+Fork of [CSDI](https://github.com/ermongroup/CSDI).
 
-## Requirement
+### Running the Experiment 
 
-Please install the packages in requirements.txt
-
-## Preparation
-### Download the healthcare dataset 
 ```shell
-python download.py physio
-```
-### Download the air quality dataset 
-```shell
-python download.py pm25
+python exe_forecasting.py --nsample [number of samples for evaluation] --time_weaver
 ```
 
-### Download the elecricity dataset 
-Please put files in [GoogleDrive](https://drive.google.com/drive/folders/1krZQofLdeQrzunuKkLXy8L_kMzQrVFI_?usp=drive_link) to the "data" folder.
+### Relevant Execution Tree
 
-## Experiments 
+*important Time Weaver modifications in italics*
 
-### training and imputation for the healthcare dataset
-```shell
-python exe_physio.py --testmissingratio [missing ratio] --nsample [number of samples]
-```
+`exe_forecasting.py`
+- calls `get_dataloader()` from `dataset_forecasting.py`
+  - *35-54 to create metadata tensor*
+  - *56-78 to segment data into training, validation, and test series*
+- calls `train()` from `utils.py`
+  - calls `forward()` method of `CSDI_Forecasting` class in `main_model.py`
+    - *300-310 to initialize new Time Weaver modules*
+    - *472-488 for Time Weaver metadata processing*
+  - calls `forward()` method of `diff_CSDI` class in `diff_models.py` in the `calc_loss()` method of the CSDI base class
+    - *91-103 to process input data according to Time Weaver*
+    - *109, 173-177 to add metadata to residual block stream according to Time Weaver*
 
-### imputation for the healthcare dataset with pretrained model
-```shell
-python exe_physio.py --modelfolder pretrained --testmissingratio [missing ratio] --nsample [number of samples]
-```
 
-### training and imputation for the healthcare dataset
-```shell
-python exe_pm25.py --nsample [number of samples]
-```
+### Visualize Results
+'vizualize_elec_TW.ipynb' is a notebook for visualizing results.
 
-### training and forecasting for the electricity dataset
-```shell
-python exe_forecasting.py --datatype electricity --nsample [number of samples]
-```
-
-### Visualize results
-'visualize_examples.ipynb' is a notebook for visualizing results.
-
-## Acknowledgements
-
-A part of the codes is based on [BRITS](https://github.com/caow13/BRITS) and [DiffWave](https://github.com/lmnt-com/diffwave)
-
-## Citation
-If you use this code for your research, please cite our paper:
-
-```
-@inproceedings{tashiro2021csdi,
-  title={CSDI: Conditional Score-based Diffusion Models for Probabilistic Time Series Imputation},
-  author={Tashiro, Yusuke and Song, Jiaming and Song, Yang and Ermon, Stefano},
-  booktitle={Advances in Neural Information Processing Systems},
-  year={2021}
-}
-```
