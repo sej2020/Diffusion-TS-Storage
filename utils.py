@@ -207,6 +207,11 @@ def evaluate(model, test_loader, nsample=100, scaler=1, mean_scaler=0, foldernam
                     ],
                     f,
                 )
+            with open(foldername + "/result_nsample" + str(nsample) + ".txt", "w") as f:
+                f.write("RMSE: " + str(np.sqrt(mse_total / evalpoints_total)) + "\n")
+                f.write("MAE: " + str(mae_total / evalpoints_total) + "\n")
+                f.write("CRPS: " + str(CRPS) + "\n")
+                f.write("CRPS_sum: " + str(CRPS_sum) + "\n")
                 print("RMSE:", np.sqrt(mse_total / evalpoints_total))
                 print("MAE:", mae_total / evalpoints_total)
                 print("CRPS:", CRPS)

@@ -85,22 +85,31 @@ class diff_CSDI(nn.Module):
             ]
         )
 
-    def forward(self, x, cond_info, diffusion_step):
+    def forward(self, x, cond_info, diffusion_step, metadata):
         B, inputdim, K, L = x.shape
 
-        x = x.reshape(B, inputdim, K * L)
-        x = self.input_projection(x)
-        x = F.relu(x)
-        x = x.reshape(B, self.channels, K, L)
+        if metadata is not None:
+            ### Time Weaver ###
+            x = x.permute(0,2,1,3).reshape(B * K, inputdim, L)
+            x = self.input_projection(x)  # (B*K , channel, L)
+            x = x.reshape(B, K, self.channels, L).permute(0,2,1,3)
+            ################################
+        else:
+            ## Original ###
+            x = x.reshape(B, inputdim, K * L)
+            x = self.input_projection(x)  # (B,channel,K*L)
+            x = F.relu(x)
+            x = x.reshape(B, self.channels, K, L)
+            ###############################
 
         diffusion_emb = self.diffusion_embedding(diffusion_step)
-
         skip = []
         for layer in self.residual_layers:
-            x, skip_connection = layer(x, cond_info, diffusion_emb)
+            ### Time Weaver sends metadata embedding to the layer ###
+            x, skip_connection = layer(x, cond_info, diffusion_emb, metadata)
             skip.append(skip_connection)
-
         x = torch.sum(torch.stack(skip), dim=0) / math.sqrt(len(self.residual_layers))
+
         x = x.reshape(B, self.channels, K * L)
         x = self.output_projection1(x)  # (B,channel,K*L)
         x = F.relu(x)
@@ -152,18 +161,25 @@ class ResidualBlock(nn.Module):
         y = y.reshape(B, L, channel, K).permute(0, 2, 3, 1).reshape(B, channel, K * L)
         return y
 
-    def forward(self, x, cond_info, diffusion_emb):
+    def forward(self, x, cond_info, diffusion_emb, metadata):
         B, channel, K, L = x.shape
         base_shape = x.shape
         x = x.reshape(B, channel, K * L)
+        if metadata is not None:
+            metadata = metadata.reshape(B, channel, K * L)
 
         diffusion_emb = self.diffusion_projection(diffusion_emb).unsqueeze(-1)  # (B,channel,1)
-        y = x + diffusion_emb
+        
+        ### Time Weaver: metadata is added to the input of the layer ###
+        if metadata is not None:
+            y = x + diffusion_emb + metadata
+        else:
+            y = x + diffusion_emb
 
         y = self.forward_time(y, base_shape)
         y = self.forward_feature(y, base_shape)  # (B,channel,K*L)
         y = self.mid_projection(y)  # (B,2*channel,K*L)
-
+   
         _, cond_dim, _, _ = cond_info.shape
         cond_info = cond_info.reshape(B, cond_dim, K * L)
         cond_info = self.cond_projection(cond_info)  # (B,2*channel,K*L)

@@ -19,8 +19,17 @@ diffusion:
   is_linear: True
 
 model:
-  is_unconditional: 0
+  is_unconditional: 1
   timeemb: 128
   featureemb: 16
   target_strategy: "test"
   num_sample_features: 64
+
+weaver:
+  included: False
+  d_cat: 32
+  d_cont: 32
+  d_meta: 32
+  meta_encoder_n_heads: 4
+  meta_encoder_n_layers: 2
+
