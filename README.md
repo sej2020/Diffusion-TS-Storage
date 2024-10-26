@@ -4,7 +4,7 @@ Fork of [CSDI](https://github.com/ermongroup/CSDI), with some added elements fro
 ### Running the Experiment 
 
 ```shell
-python exe_forecasting.py --nsample [number of samples for evaluation]
+python -m exe_forecasting --nsample [number of samples for evaluation]
 ```
 
 - Optional: if you want to evaluate a pre-trained model, simply specify the model folder using the `--modelfolder` argument
