@@ -27,9 +27,7 @@ model:
 
 weaver:
   included: False
-  d_cat: 32
-  d_cont: 32
-  d_meta: 32
-  meta_encoder_n_heads: 4
+  d_meta: 64
+  meta_encoder_n_heads: 2
   meta_encoder_n_layers: 2
 

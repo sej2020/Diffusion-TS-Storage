@@ -18,8 +18,8 @@ class Forecasting_Dataset(Dataset):
         self.seq_length = self.history_length + self.pred_length
             
         paths=datafolder+'/data.pkl' 
-        #shape: (T x N)
-        #mask_data is usually filled by 1
+        # shape: (T x N)
+        # mask_data is usually filled by 1
         with open(paths, 'rb') as f:
             self.main_data, self.mask_data = pickle.load(f)
         paths=datafolder+'/meanstd.pkl'
@@ -31,29 +31,24 @@ class Forecasting_Dataset(Dataset):
 
         total_length = len(self.main_data)
 
-        # if time_weaver:
-        # categorical metadata for Time Weaver
-        date_vector = pd.date_range(start='1/1/2011', periods=total_length, freq='H')
-        month_vector = date_vector.month
-        day_vector = date_vector.day
-        date_meta = np.stack([month_vector, day_vector], axis=1)
-        # could be more efficient and more robust to weird choices for categorical metadata - like years
 
-        for i in range(date_meta.shape[1]):
-            date_meta_1hot = np.zeros((date_meta.shape[0], np.max(date_meta[:,i])))
-            date_meta_1hot[np.arange(date_meta.shape[0]), date_meta[:,i]-1] = 1
+        # Whenever we expand to other datasets and there might be metadata to use in Time Weaver:
+        if time_weaver:
+            meta_path = datafolder + '/metadata.pkl'
+            with open(meta_path, 'rb') as f:
+                meta_data = pickle.load(f)
+            # categorical metadata for Time Weaver
+            for i in range(meta_data.shape[1]): # iterating over feature index
+                meta_1hot = np.zeros((meta_data.shape[0], np.max(meta_data[:,i])))
+                meta_1hot[np.arange(meta_data.shape[0]), meta_data[:,i]-1] = 1
+                if i == 0:
+                    meta_1hot_all = meta_1hot
+                else:
+                    meta_1hot_all = np.concatenate((meta_1hot_all, meta_1hot), axis=1)
 
-            if i == 0:
-                date_meta_1hot_all = date_meta_1hot
-            else:
-                date_meta_1hot_all = np.concatenate((date_meta_1hot_all, date_meta_1hot), axis=1)
-        
-        # User data doesn't help for this experiment
-        # user_meta = np.ones(self.main_data.shape)
-        # self.cat_meta = np.concatenate([date_meta_1hot_all, user_meta], axis=1)
-        self.cat_meta = date_meta_1hot_all
+            self.metadata = meta_1hot_all
 
-        # interleave the blocks of t/v/t data for Time Weaver with an 80/10/10 split     
+        # interleave the blocks of t/v/t data with an 80/10/10 split     
         all_index = list(range(total_length-self.seq_length))
         self.use_index = []
         step_idx = 0
@@ -80,7 +75,6 @@ class Forecasting_Dataset(Dataset):
 
     def __getitem__(self, orgindex):
         index = self.use_index[orgindex]
-        # Time Weaver: change mask so that only one of the features is to be predicted
         target_mask = self.mask_data[index:index+self.seq_length].copy()
         target_mask[-self.pred_length:] = 0. #pred mask for test pattern strategy
         s = {
@@ -89,8 +83,9 @@ class Forecasting_Dataset(Dataset):
             'gt_mask': target_mask,
             'timepoints': np.arange(self.seq_length) * 1.0, 
             'feature_id': np.arange(self.main_data.shape[1]) * 1.0, 
-            'cat_meta': self.cat_meta[index:index+self.seq_length]
         }
+        if self.time_weaver:
+            s['metadata'] = self.metadata[index:index+self.seq_length]
 
         return s
     def __len__(self):

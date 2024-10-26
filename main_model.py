@@ -126,6 +126,7 @@ class CSDI_base(nn.Module):
         noisy_data = (current_alpha ** 0.5) * observed_data + (1.0 - current_alpha) ** 0.5 * noise
 
         total_input = self.set_input_to_diffmodel(noisy_data, observed_data, cond_mask)
+
         predicted = self.diffmodel(total_input, side_info, t, metadata)  # (B,K,L)
 
         target_mask = observed_mask - cond_mask
@@ -298,16 +299,15 @@ class CSDI_Forecasting(CSDI_base):
         self.num_sample_features = config["model"]["num_sample_features"]
         self.time_weaver = time_weaver
         if time_weaver:
-            self.cat_tokenizer = torch.nn.Linear(config["weaver"]["k_cat"], config["weaver"]["d_cat"], device=device)
-            # self.cont_tokenizer = torch.nn.Linear(config["weaver"]["k_cont"], config["weaver"]["d_cont"]) # TODO: depedent on k_cont and d_cont from config
+            self.meta_tokenizer = torch.nn.Linear(config["weaver"]["k_meta"], config["weaver"]["d_meta"], device=device)
             self.metadata_encoders = [
                 torch.nn.MultiheadAttention(
-                    config["weaver"]["d_cat"], 
+                    config["weaver"]["d_meta"], 
                     config["weaver"]["meta_encoder_n_heads"], 
                     batch_first=True,
                     device=device
                     ) for i in range(config["weaver"]["meta_encoder_n_layers"])]
-            self.meta_output_proj = torch.nn.Linear(config["weaver"]["d_cat"], config["diffusion"]["channels"], device=device)
+            self.meta_output_proj = torch.nn.Linear(config["weaver"]["d_meta"], config["diffusion"]["channels"], device=device)
 
     def process_data(self, batch):
         observed_data = batch["observed_data"].to(self.device).float()
@@ -315,8 +315,8 @@ class CSDI_Forecasting(CSDI_base):
         observed_tp = batch["timepoints"].to(self.device).float()
         gt_mask = batch["gt_mask"].to(self.device).float()
         if self.time_weaver:
-            cat_meta = batch["cat_meta"].to(self.device).float()
-            cat_meta = cat_meta.permute(0, 2, 1)
+            metadata = batch["metadata"].to(self.device).float()
+            metadata = metadata.permute(0, 2, 1)
 
         observed_data = observed_data.permute(0, 2, 1)
         observed_mask = observed_mask.permute(0, 2, 1)
@@ -335,24 +335,16 @@ class CSDI_Forecasting(CSDI_base):
             for_pattern_mask,
             cut_length,
             feature_id, 
-            cat_meta if self.time_weaver else None
+            metadata if self.time_weaver else None
         )        
 
-    def sample_features(self, observed_data, observed_mask, feature_id, gt_mask, cat_meta):
+    def sample_features(self, observed_data, observed_mask, feature_id, gt_mask, metadata=None):
         size = self.num_sample_features
         self.target_dim = size
         extracted_data = []
         extracted_mask = []
         extracted_feature_id = []
         extracted_gt_mask = []
-
-        ## user data not useful for this experiment    
-        # if self.time_weaver:
-        #     extracted_cat_meta = cat_meta
-        #     extracted_cat_meta[:,-self.target_dim_base:] = 0
-        #     date_meta_shape = cat_meta.shape[1] - self.target_dim_base
-        # else:
-        #     extracted_cat_meta = None
 
 
         for k in range(len(observed_data)):
@@ -362,22 +354,14 @@ class CSDI_Forecasting(CSDI_base):
             extracted_mask.append(observed_mask[k,ind[:size]])
             extracted_feature_id.append(feature_id[k,ind[:size]])
             extracted_gt_mask.append(gt_mask[k,ind[:size]])
-            ## user data not useful for this experiment
-            # if self.time_weaver:
-            #     extracted_cat_meta.append(cat_meta[k,ind[:size]])
-                # extracted_cat_meta[k, ind[:size]+date_meta_shape] = 1
         
 
         extracted_data = torch.stack(extracted_data,0)
         extracted_mask = torch.stack(extracted_mask,0)
         extracted_feature_id = torch.stack(extracted_feature_id,0)
         extracted_gt_mask = torch.stack(extracted_gt_mask,0)
-        ## user data not useful for this experiment
-        # if self.time_weaver:
-        #     extracted_cat_meta = torch.stack(extracted_cat_meta,0)
 
-        # return extracted_data, extracted_mask,extracted_feature_id, extracted_gt_mask, extracted_cat_meta
-        return extracted_data, extracted_mask, extracted_feature_id, extracted_gt_mask, cat_meta
+        return extracted_data, extracted_mask, extracted_feature_id, extracted_gt_mask, metadata
 
 
     def get_side_info(self, observed_tp, cond_mask, feature_id=None):
@@ -411,13 +395,12 @@ class CSDI_Forecasting(CSDI_base):
             _,
             _,
             feature_id, 
-            cat_meta # [B, K_cat, L]
-            # add cont_meta
+            metadata # [B, K_meta, L]
         ) = self.process_data(batch)
 
         if is_train == 1 and (self.target_dim_base > self.num_sample_features):
-            observed_data, observed_mask, feature_id, gt_mask, cat_meta = \
-                    self.sample_features(observed_data, observed_mask, feature_id, gt_mask, cat_meta)
+            observed_data, observed_mask, feature_id, gt_mask, metadata = \
+                    self.sample_features(observed_data, observed_mask, feature_id, gt_mask, metadata)
         else:
             self.target_dim = self.target_dim_base
             feature_id = None
@@ -432,9 +415,8 @@ class CSDI_Forecasting(CSDI_base):
         side_info = self.get_side_info(observed_tp, cond_mask, feature_id)
 
         if self.time_weaver:
-            metadata = self.time_weave(cat_meta, None) # [B, channel, K, L]
-        else:
-            metadata = None
+            metadata = self.time_weave(metadata) # [B, channel, K, L]
+
 
         loss_func = self.calc_loss if is_train == 1 else self.calc_loss_valid
 
@@ -450,7 +432,7 @@ class CSDI_Forecasting(CSDI_base):
             _,
             _,
             feature_id, 
-            cat_meta
+            metadata
         ) = self.process_data(batch)
 
         with torch.no_grad():
@@ -460,29 +442,23 @@ class CSDI_Forecasting(CSDI_base):
             side_info = self.get_side_info(observed_tp, cond_mask)
 
             if self.time_weaver:
-                metadata = self.time_weave(cat_meta, None) # [B, channel, K, L]
-            else:
-                metadata = None
+                metadata = self.time_weave(metadata) # [B, channel, K, L]
+
             print('Imputing', flush=True)
             samples = self.impute(observed_data, cond_mask, side_info, metadata, n_samples)
 
         return samples, observed_data, target_mask, observed_mask, observed_tp
 
 
-    def time_weave(self, cat_meta, cont_meta=None): # [B, K_cat, L]
+    def time_weave(self, metadata): # [B, K_meta, L]
 
-        cat_meta = cat_meta.permute(0, 2, 1) # [B, L, K_cat]
+        metadata = metadata.permute(0, 2, 1) # [B, L, K_meta]
 
-        z_cat = self.cat_tokenizer(cat_meta)
-        z_cont = None
+        z_meta = self.meta_tokenizer(metadata) # [B, L, d_meta]
 
-        if cont_meta is not None:
-            z = torch.cat((z_cat, z_cont), dim=2)
-        else:
-            z = z_cat
         for sa_layer in self.metadata_encoders:
-            z = sa_layer(z,z,z)[0]
+            z_meta = sa_layer(z_meta,z_meta,z_meta)[0]
 
-        meta = self.meta_output_proj(z)
+        meta = self.meta_output_proj(z_meta)
         meta = meta.permute(0, 2, 1).unsqueeze(2).expand(-1,-1,self.target_dim,-1) # [B, channel, K, L]
         return meta

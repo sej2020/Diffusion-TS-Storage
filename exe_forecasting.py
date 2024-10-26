@@ -56,7 +56,7 @@ train_loader, valid_loader, test_loader, scaler, mean_scaler = get_dataloader(
 )
 if args.time_weaver:
     config["weaver"]["included"] = True
-    config["weaver"]["k_cat"] = train_loader.dataset.cat_meta.shape[1]
+    config["weaver"]["k_meta"] = train_loader.dataset.metadata.shape[1]
 
 
 model = CSDI_Forecasting(config, args.device, target_dim, time_weaver=args.time_weaver).to(args.device)
