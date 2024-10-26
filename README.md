@@ -4,10 +4,11 @@ Fork of [CSDI](https://github.com/ermongroup/CSDI), with some added elements fro
 ### Running the Experiment 
 
 ```shell
-python exe_forecasting.py --nsample [number of samples for evaluation] --time_weaver
+python exe_forecasting.py --nsample [number of samples for evaluation]
 ```
 
-Note that if you want to evaluate a pre-trained model, simply specify the model folder using the `--modelfolder` argument.
+Optional: if you want to evaluate a pre-trained model, simply specify the model folder using the `--modelfolder` argument
+Optional: if you have categorical metadata to be incorporated into prediction, make sure there is a `metadata.pkl` file in your data folder and append the flag `--time_weaver` to the above command
 
 ### Relevant Execution Tree
 
