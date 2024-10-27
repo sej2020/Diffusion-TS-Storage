@@ -19,7 +19,7 @@ diffusion:
   is_linear: True
 
 model:
-  is_unconditional: 1
+  is_pseudo_unconditional: 1
   timeemb: 128
   featureemb: 16
   target_strategy: "test"

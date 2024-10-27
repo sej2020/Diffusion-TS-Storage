@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from diff_models import diff_CSDI
+torch.set_printoptions(sci_mode=False)
 
 
 class CSDI_base(nn.Module):
@@ -12,11 +13,12 @@ class CSDI_base(nn.Module):
 
         self.emb_time_dim = config["model"]["timeemb"]
         self.emb_feature_dim = config["model"]["featureemb"]
-        self.is_unconditional = config["model"]["is_unconditional"]
+        self.is_pseudo_unconditional = config["model"]["is_pseudo_unconditional"]
+        self.true_unconditional = config["model"]["is_true_unconditional"]
         self.target_strategy = config["model"]["target_strategy"]
 
         self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim
-        if self.is_unconditional == False:
+        if self.is_pseudo_unconditional == False and self.true_unconditional == False:
             self.emb_total_dim += 1  # for conditional mask
         self.embed_layer = nn.Embedding(
             num_embeddings=self.target_dim, embedding_dim=self.emb_feature_dim
@@ -25,7 +27,7 @@ class CSDI_base(nn.Module):
         config_diff = config["diffusion"]
         config_diff["side_dim"] = self.emb_total_dim
 
-        input_dim = 1 if self.is_unconditional == True else 2
+        input_dim = 1 if self.is_pseudo_unconditional == True or self.true_unconditional == True else 2
         self.diffmodel = diff_CSDI(config_diff, input_dim)
 
         # parameters for diffusion models
@@ -96,7 +98,7 @@ class CSDI_base(nn.Module):
         side_info = torch.cat([time_embed, feature_embed], dim=-1)  # (B,L,K,*)
         side_info = side_info.permute(0, 3, 2, 1)  # (B,*,K,L)
 
-        if self.is_unconditional == False:
+        if self.is_pseudo_unconditional == False:
             side_mask = cond_mask.unsqueeze(1)  # (B,1,K,L)
             side_info = torch.cat([side_info, side_mask], dim=1)
 
@@ -127,16 +129,18 @@ class CSDI_base(nn.Module):
 
         total_input = self.set_input_to_diffmodel(noisy_data, observed_data, cond_mask)
 
+        # predicts the noise tensor that was added to observed data to yield noisy data
         predicted = self.diffmodel(total_input, side_info, t, metadata)  # (B,K,L)
 
         target_mask = observed_mask - cond_mask
+
         residual = (noise - predicted) * target_mask
         num_eval = target_mask.sum()
         loss = (residual ** 2).sum() / (num_eval if num_eval > 0 else 1)
         return loss
 
     def set_input_to_diffmodel(self, noisy_data, observed_data, cond_mask):
-        if self.is_unconditional == True:
+        if self.is_pseudo_unconditional == True or self.true_unconditional == True:
             total_input = noisy_data.unsqueeze(1)  # (B,1,K,L)
         else:
             cond_obs = (cond_mask * observed_data).unsqueeze(1)
@@ -151,8 +155,8 @@ class CSDI_base(nn.Module):
 
         for i in range(n_samples):
             print("iter", i, flush=True)
-            # generate noisy observation for unconditional model
-            if self.is_unconditional == True:
+            # generate noisy observation for pseudo_unconditional model
+            if self.is_pseudo_unconditional == True:
                 noisy_obs = observed_data
                 noisy_cond_history = []
                 for t in range(self.num_steps):
@@ -164,14 +168,16 @@ class CSDI_base(nn.Module):
             current_sample = torch.randn_like(observed_data)
 
             for t in range(self.num_steps - 1, -1, -1):
-                if self.is_unconditional == True:
+                if self.is_pseudo_unconditional == True:
                     diff_input = cond_mask * noisy_cond_history[t] + (1.0 - cond_mask) * current_sample
                     diff_input = diff_input.unsqueeze(1)  # (B,1,K,L)
+                elif self.true_unconditional == True:
+                    diff_input = current_sample
+                    diff_input = diff_input.unsqueeze(1)
                 else:
                     cond_obs = (cond_mask * observed_data).unsqueeze(1)
                     noisy_target = ((1 - cond_mask) * current_sample).unsqueeze(1)
                     diff_input = torch.cat([cond_obs, noisy_target], dim=1)  # (B,2,K,L)
-
 
                 predicted = self.diffmodel(diff_input, side_info, torch.tensor([t]).to(self.device), metadata)
 
@@ -380,7 +386,7 @@ class CSDI_Forecasting(CSDI_base):
         side_info = torch.cat([time_embed, feature_embed], dim=-1)  # (B,L,K,*)
         side_info = side_info.permute(0, 3, 2, 1)  # (B,*,K,L)
 
-        if self.is_unconditional == False:
+        if self.is_pseudo_unconditional == False and self.true_unconditional == False:
             side_mask = cond_mask.unsqueeze(1)  # (B,1,K,L)
             side_info = torch.cat([side_info, side_mask], dim=1)
 
@@ -391,7 +397,7 @@ class CSDI_Forecasting(CSDI_base):
             observed_data, # [B, K, L]
             observed_mask, # [B, K, L]
             observed_tp, # [B, L]
-            gt_mask, # [B, K, L]
+            gt_mask, # [B, K, L] - all 0s if true_unconditional
             _,
             _,
             feature_id, 
@@ -436,7 +442,7 @@ class CSDI_Forecasting(CSDI_base):
         ) = self.process_data(batch)
 
         with torch.no_grad():
-            cond_mask = gt_mask
+            cond_mask = gt_mask 
             target_mask = observed_mask * (1-gt_mask)
 
             side_info = self.get_side_info(observed_tp, cond_mask)

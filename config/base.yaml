@@ -20,7 +20,7 @@ diffusion:
   is_linear: False
 
 model:
-  is_unconditional: 0
+  is_pseudo_unconditional: 0
   timeemb: 128
   featureemb: 16
   target_strategy: "random"

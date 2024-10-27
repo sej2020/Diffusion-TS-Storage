@@ -10,6 +10,8 @@ def train(
     config,
     train_loader,
     valid_loader=None,
+    scaler=1,
+    mean_scaler=0,
     valid_epoch_interval=20,
     foldername="",
 ):
@@ -47,28 +49,29 @@ def train(
 
             lr_scheduler.step()
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
-            model.eval()
-            avg_loss_valid = 0
-            with torch.no_grad():
-                with tqdm(valid_loader, mininterval=5.0, maxinterval=50.0) as it:
-                    for batch_no, valid_batch in enumerate(it, start=1):
-                        loss = model(valid_batch, is_train=0)
-                        avg_loss_valid += loss.item()
-                        it.set_postfix(
-                            ordered_dict={
-                                "valid_avg_epoch_loss": avg_loss_valid / batch_no,
-                                "epoch": epoch_no,
-                            },
-                            refresh=False,
-                        )
-            if best_valid_loss > avg_loss_valid:
-                best_valid_loss = avg_loss_valid
-                print(
-                    "\n best loss is updated to ",
-                    avg_loss_valid / batch_no,
-                    "at",
-                    epoch_no,
-                )
+            evaluate(model, valid_loader, nsample=10, scaler=scaler, mean_scaler=mean_scaler, foldername=foldername, mode="valid")
+            # model.eval()
+            # avg_loss_valid = 0
+            # with torch.no_grad():
+            #     with tqdm(valid_loader, mininterval=5.0, maxinterval=50.0) as it:
+            #         for batch_no, valid_batch in enumerate(it, start=1):
+            #             loss = model(valid_batch, is_train=0)
+            #             avg_loss_valid += loss.item()
+            #             it.set_postfix(
+            #                 ordered_dict={
+            #                     "valid_avg_epoch_loss": avg_loss_valid / batch_no,
+            #                     "epoch": epoch_no,
+            #                 },
+            #                 refresh=False,
+            #             )
+            # if best_valid_loss > avg_loss_valid:
+            #     best_valid_loss = avg_loss_valid
+            #     print(
+            #         "\n best loss is updated to ",
+            #         avg_loss_valid / batch_no,
+            #         "at",
+            #         epoch_no,
+            #     )
 
     if foldername != "":
         torch.save(model.state_dict(), output_path)
@@ -117,7 +120,7 @@ def calc_quantile_CRPS_sum(target, forecast, eval_points, mean_scaler, scaler):
         CRPS += q_loss / denom
     return CRPS.item() / len(quantiles)
 
-def evaluate(model, test_loader, nsample=100, scaler=1, mean_scaler=0, foldername=""):
+def evaluate(model, test_loader, nsample=100, scaler=1, mean_scaler=0, foldername="", mode="test"):
 
     with torch.no_grad():
         model.eval()
@@ -167,52 +170,53 @@ def evaluate(model, test_loader, nsample=100, scaler=1, mean_scaler=0, foldernam
                     refresh=True,
                 )
 
-            with open(
-                foldername + "/generated_outputs_nsample" + str(nsample) + ".pk", "wb"
-            ) as f:
-                all_target = torch.cat(all_target, dim=0)
-                all_evalpoint = torch.cat(all_evalpoint, dim=0)
-                all_observed_point = torch.cat(all_observed_point, dim=0)
-                all_observed_time = torch.cat(all_observed_time, dim=0)
-                all_generated_samples = torch.cat(all_generated_samples, dim=0)
+            if mode == "test":
+                with open(
+                    foldername + "/generated_outputs_nsample" + str(nsample) + ".pk", "wb"
+                ) as f:
+                    all_target = torch.cat(all_target, dim=0)
+                    all_evalpoint = torch.cat(all_evalpoint, dim=0)
+                    all_observed_point = torch.cat(all_observed_point, dim=0)
+                    all_observed_time = torch.cat(all_observed_time, dim=0)
+                    all_generated_samples = torch.cat(all_generated_samples, dim=0)
 
-                pickle.dump(
-                    [
-                        all_generated_samples,
-                        all_target,
-                        all_evalpoint,
-                        all_observed_point,
-                        all_observed_time,
-                        scaler,
-                        mean_scaler,
-                    ],
-                    f,
+                    pickle.dump(
+                        [
+                            all_generated_samples,
+                            all_target,
+                            all_evalpoint,
+                            all_observed_point,
+                            all_observed_time,
+                            scaler,
+                            mean_scaler,
+                        ],
+                        f,
+                    )
+
+                CRPS = calc_quantile_CRPS(
+                    all_target, all_generated_samples, all_evalpoint, mean_scaler, scaler
+                )
+                CRPS_sum = calc_quantile_CRPS_sum(
+                    all_target, all_generated_samples, all_evalpoint, mean_scaler, scaler
                 )
 
-            CRPS = calc_quantile_CRPS(
-                all_target, all_generated_samples, all_evalpoint, mean_scaler, scaler
-            )
-            CRPS_sum = calc_quantile_CRPS_sum(
-                all_target, all_generated_samples, all_evalpoint, mean_scaler, scaler
-            )
-
-            with open(
-                foldername + "/result_nsample" + str(nsample) + ".pk", "wb"
-            ) as f:
-                pickle.dump(
-                    [
-                        np.sqrt(mse_total / evalpoints_total),
-                        mae_total / evalpoints_total,
-                        CRPS,
-                    ],
-                    f,
-                )
-            with open(foldername + "/result_nsample" + str(nsample) + ".txt", "w") as f:
-                f.write("RMSE: " + str(np.sqrt(mse_total / evalpoints_total)) + "\n")
-                f.write("MAE: " + str(mae_total / evalpoints_total) + "\n")
-                f.write("CRPS: " + str(CRPS) + "\n")
-                f.write("CRPS_sum: " + str(CRPS_sum) + "\n")
-                print("RMSE:", np.sqrt(mse_total / evalpoints_total))
-                print("MAE:", mae_total / evalpoints_total)
-                print("CRPS:", CRPS)
-                print("CRPS_sum:", CRPS_sum)
+                with open(
+                    foldername + "/result_nsample" + str(nsample) + ".pk", "wb"
+                ) as f:
+                    pickle.dump(
+                        [
+                            np.sqrt(mse_total / evalpoints_total),
+                            mae_total / evalpoints_total,
+                            CRPS,
+                        ],
+                        f,
+                    )
+                with open(foldername + "/result_nsample" + str(nsample) + ".txt", "w") as f:
+                    f.write("RMSE: " + str(np.sqrt(mse_total / evalpoints_total)) + "\n")
+                    f.write("MAE: " + str(mae_total / evalpoints_total) + "\n")
+                    f.write("CRPS: " + str(CRPS) + "\n")
+                    f.write("CRPS_sum: " + str(CRPS_sum) + "\n")
+                    print("RMSE:", np.sqrt(mse_total / evalpoints_total))
+                    print("MAE:", mae_total / evalpoints_total)
+                    print("CRPS:", CRPS)
+                    print("CRPS_sum:", CRPS_sum)

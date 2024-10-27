@@ -20,7 +20,7 @@ parser.add_argument(
     "--validationindex", type=int, default=0, help="index of month used for validation (value:[0-7])"
 )
 parser.add_argument("--nsample", type=int, default=100)
-parser.add_argument("--unconditional", action="store_true")
+parser.add_argument("--pseudo_unconditional", action="store_true")
 
 args = parser.parse_args()
 print(args)
@@ -29,7 +29,7 @@ path = "config/" + args.config
 with open(path, "r") as f:
     config = yaml.safe_load(f)
 
-config["model"]["is_unconditional"] = args.unconditional
+config["model"]["is_pseudo_unconditional"] = args.pseudo_unconditional
 config["model"]["target_strategy"] = args.targetstrategy
 
 print(json.dumps(config, indent=4))

@@ -17,7 +17,7 @@ parser.add_argument("--testmissingratio", type=float, default=0.1)
 parser.add_argument(
     "--nfold", type=int, default=0, help="for 5fold test (valid value:[0-4])"
 )
-parser.add_argument("--unconditional", action="store_true")
+parser.add_argument("--pseudo_unconditional", action="store_true")
 parser.add_argument("--modelfolder", type=str, default="")
 parser.add_argument("--nsample", type=int, default=100)
 
@@ -28,7 +28,7 @@ path = "config/" + args.config
 with open(path, "r") as f:
     config = yaml.safe_load(f)
 
-config["model"]["is_unconditional"] = args.unconditional
+config["model"]["is_pseudo_unconditional"] = args.pseudo_unconditional
 config["model"]["test_missing_ratio"] = args.testmissingratio
 
 print(json.dumps(config, indent=4))
