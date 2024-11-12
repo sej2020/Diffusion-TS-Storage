@@ -19,6 +19,8 @@ parser.add_argument("--true_unconditional", action="store_true")
 parser.add_argument("--modelfolder", type=str, default="")
 parser.add_argument("--nsample", type=int, default=100)
 parser.add_argument("--time_weaver", action="store_true")
+parser.add_argument("--history_length", type=int, default=168)
+parser.add_argument("--condit_feature_count", type=int, default=-1)
 
 args = parser.parse_args()
 print(args)
@@ -32,6 +34,8 @@ if args.datatype == 'electricity':
 
 config["model"]["is_pseudo_unconditional"] = args.pseudo_unconditional
 config["model"]["is_true_unconditional"] = args.true_unconditional
+config["model"]["history_length"] = args.history_length
+config["model"]["condit_feature_count"] = args.condit_feature_count
 
 assert not (args.pseudo_unconditional and args.true_unconditional), "Cannot be both pseudo and true unconditional"
 
@@ -46,7 +50,9 @@ if args.modelfolder:
 else:
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # foldername = "./save/testing_" + current_time + "/"
-    foldername = "./save/forecasting_" + args.datatype + '_' + current_time + "/"
+    # foldername = "./save/forecasting_" + args.datatype + '_' + current_time + "/"
+    # foldername = "./save/hist_len_expr/fc_" + str(args.history_length) + '_' + current_time + "/"
+    foldername = "./save/feature_num_expr/fc_" + str(args.condit_feature_count) + '_' + current_time + "/"
     print('model folder:', foldername)
     os.makedirs(foldername, exist_ok=True)
     with open(foldername + "config.json", "w") as f:
@@ -59,6 +65,7 @@ train_loader, valid_loader, test_loader, scaler, mean_scaler = get_dataloader(
     batch_size=config["train"]["batch_size"],
     time_weaver=args.time_weaver,
     true_unconditional=args.true_unconditional,
+    history_length=args.history_length
 )
 if args.time_weaver:
     config["weaver"]["included"] = True

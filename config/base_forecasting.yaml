@@ -1,8 +1,8 @@
 
-#type: args
+# [Default]
 
 train:
-  epochs: 100
+  epochs: 100 # Default: 100, I have tried more epochs (200)
   batch_size: 8 
   lr: 1.0e-3
   itr_per_epoch: 1.0e+8
@@ -14,14 +14,14 @@ diffusion:
   diffusion_embedding_dim: 128
   beta_start: 0.0001
   beta_end: 0.5
-  num_steps: 50
+  num_steps: 50 # Default: 50, maybe I'll try less so less time for error to accumulate
   schedule: "quad"
   is_linear: True
 
 model:
   is_pseudo_unconditional: 1
-  timeemb: 128
-  featureemb: 16
+  timeemb: 128 # Default: 128, I'm trying more dimensions
+  featureemb: 16 # Default: 16, I'm trying more dimensions
   target_strategy: "test"
   num_sample_features: 64
 

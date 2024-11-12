@@ -5,9 +5,9 @@ import numpy as np
 import torch
 
 class Forecasting_Dataset(Dataset):
-    def __init__(self, datatype, mode="train", time_weaver=False, true_unconditional=False):
+    def __init__(self, datatype, mode="train", time_weaver=False, true_unconditional=False, history_length=168):
         if not true_unconditional:
-            self.history_length = 168
+            self.history_length = history_length
         else:
             self.history_length = 0
         self.pred_length = 24
@@ -29,9 +29,9 @@ class Forecasting_Dataset(Dataset):
             
         self.main_data = (self.main_data - self.mean_data) / self.std_data
 
+        breakpoint()
 
         total_length = len(self.main_data)
-
 
         # Whenever we expand to other datasets and there might be metadata to use in Time Weaver:
         if time_weaver:
@@ -95,14 +95,14 @@ class Forecasting_Dataset(Dataset):
     def __len__(self):
         return len(self.use_index)
 
-def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False):
-    dataset = Forecasting_Dataset(datatype,mode='train', time_weaver=time_weaver, true_unconditional=true_unconditional)
+def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False, history_length=168):
+    dataset = Forecasting_Dataset(datatype,mode='train', time_weaver=time_weaver, true_unconditional=true_unconditional, history_length=history_length)
     train_loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=1)
-    valid_dataset = Forecasting_Dataset(datatype,mode='valid', time_weaver=time_weaver, true_unconditional=true_unconditional)
+    valid_dataset = Forecasting_Dataset(datatype,mode='valid', time_weaver=time_weaver, true_unconditional=true_unconditional, history_length=history_length)
     valid_loader = DataLoader(
         valid_dataset, batch_size=batch_size, shuffle=0)
-    test_dataset = Forecasting_Dataset(datatype,mode='test', time_weaver=time_weaver, true_unconditional=true_unconditional)
+    test_dataset = Forecasting_Dataset(datatype,mode='test', time_weaver=time_weaver, true_unconditional=true_unconditional, history_length=history_length)
     test_loader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=0)
 

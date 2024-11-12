@@ -49,29 +49,32 @@ def train(
 
             lr_scheduler.step()
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
-            evaluate(model, valid_loader, nsample=10, scaler=scaler, mean_scaler=mean_scaler, foldername=foldername, mode="valid")
-            # model.eval()
-            # avg_loss_valid = 0
-            # with torch.no_grad():
-            #     with tqdm(valid_loader, mininterval=5.0, maxinterval=50.0) as it:
-            #         for batch_no, valid_batch in enumerate(it, start=1):
-            #             loss = model(valid_batch, is_train=0)
-            #             avg_loss_valid += loss.item()
-            #             it.set_postfix(
-            #                 ordered_dict={
-            #                     "valid_avg_epoch_loss": avg_loss_valid / batch_no,
-            #                     "epoch": epoch_no,
-            #                 },
-            #                 refresh=False,
-            #             )
-            # if best_valid_loss > avg_loss_valid:
-            #     best_valid_loss = avg_loss_valid
-            #     print(
-            #         "\n best loss is updated to ",
-            #         avg_loss_valid / batch_no,
-            #         "at",
-            #         epoch_no,
-            #     )
+            # original_target_dim = model.target_dim
+            # model.target_dim = 370
+            # evaluate(model, valid_loader, nsample=10, scaler=scaler, mean_scaler=mean_scaler, foldername=foldername, mode="valid")
+            # model.target_dim = original_target_dim
+            model.eval()
+            avg_loss_valid = 0
+            with torch.no_grad():
+                with tqdm(valid_loader, mininterval=5.0, maxinterval=50.0) as it:
+                    for batch_no, valid_batch in enumerate(it, start=1):
+                        loss = model(valid_batch, is_train=0)
+                        avg_loss_valid += loss.item()
+                        it.set_postfix(
+                            ordered_dict={
+                                "valid_avg_epoch_loss": avg_loss_valid / batch_no,
+                                "epoch": epoch_no,
+                            },
+                            refresh=False,
+                        )
+            if best_valid_loss > avg_loss_valid:
+                best_valid_loss = avg_loss_valid
+                print(
+                    "\n best loss is updated to ",
+                    avg_loss_valid / batch_no,
+                    "at",
+                    epoch_no,
+                )
 
     if foldername != "":
         torch.save(model.state_dict(), output_path)
