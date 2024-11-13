@@ -5,13 +5,14 @@ import numpy as np
 import torch
 
 class Forecasting_Dataset(Dataset):
-    def __init__(self, datatype, mode="train", time_weaver=False, true_unconditional=False, history_length=168):
+    def __init__(self, datatype, mode="train", time_weaver=False, true_unconditional=False, history_length=168, n_condit_features=-1):
         if not true_unconditional:
             self.history_length = history_length
         else:
             self.history_length = 0
         self.pred_length = 24
         self.time_weaver = time_weaver
+        self.n_condit_features = n_condit_features
 
         if datatype == 'electricity':
             datafolder = './data/electricity_nips'
@@ -22,15 +23,25 @@ class Forecasting_Dataset(Dataset):
         # shape: (T x N)
         # mask_data is usually filled by 1
         with open(paths, 'rb') as f:
-            self.main_data, self.mask_data = pickle.load(f)
+            self.main_data, true_presence_mask = pickle.load(f)
         paths=datafolder+'/meanstd.pkl'
         with open(paths, 'rb') as f:
             self.mean_data, self.std_data = pickle.load(f)
-            
+        
         self.main_data = (self.main_data - self.mean_data) / self.std_data
+        self.true_presence_mask = true_presence_mask
 
-        breakpoint()
-
+        if self.n_condit_features > 0:
+            # random feature selection
+            self.condit_features = np.random.choice(self.main_data.shape[1], self.n_condit_features, replace=False)
+            self.mask_data = np.zeros_like(self.main_data)
+            self.mask_data[:, self.condit_features] = 1
+            self.mask_data = self.mask_data * true_presence_mask
+            # mask data is only 1s for conditional features when present in the data, 0s otherwise
+        else:
+            self.mask_data = true_presence_mask
+            # true presence mask and mask data are the same
+        
         total_length = len(self.main_data)
 
         # Whenever we expand to other datasets and there might be metadata to use in Time Weaver:
@@ -78,31 +89,65 @@ class Forecasting_Dataset(Dataset):
 
 
     def __getitem__(self, orgindex):
+        """
+        If condit features are used, (ex. idx 2,3)
+        >>> gt_mask = [0, 0, 1, 1]
+        ...           [0, 0, 1, 1]
+        ...           ------------ <- pred start
+        ...           [0, 0, 0, 0]
+        >>> observed_mask = [0, 0, 1, 1]
+        ...                 [0, 0, 1, 1]
+        ...                 ------------ <- pred start
+        ...                 [1, 1, 1, 1]   
+        """
         index = self.use_index[orgindex]
         target_mask = self.mask_data[index:index+self.seq_length].copy()
         target_mask[-self.pred_length:] = 0. #pred mask for test pattern strategy
+        mask_data = self.mask_data[index:index+self.seq_length].copy()
+        true_mask = self.true_presence_mask[index:index+self.seq_length].copy()
+        mask_data[-self.pred_length:] = true_mask[-self.pred_length:] # ground truth for prediction is present
         s = {
             'observed_data': self.main_data[index:index+self.seq_length],
-            'observed_mask': self.mask_data[index:index+self.seq_length],
+            'observed_mask': mask_data,
             'gt_mask': target_mask,
             'timepoints': np.arange(self.seq_length) * 1.0, 
             'feature_id': np.arange(self.main_data.shape[1]) * 1.0, 
         }
         if self.time_weaver:
             s['metadata'] = self.metadata[index:index+self.seq_length]
-
+        if self.n_condit_features > 0:
+            s['condit_features'] = self.condit_features
         return s
+    
     def __len__(self):
         return len(self.use_index)
 
-def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False, history_length=168):
-    dataset = Forecasting_Dataset(datatype,mode='train', time_weaver=time_weaver, true_unconditional=true_unconditional, history_length=history_length)
+def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False, history_length=168, n_condit_features=-1):
+    dataset = Forecasting_Dataset(datatype,
+        mode='train',
+        time_weaver=time_weaver,
+        true_unconditional=true_unconditional,
+        history_length=history_length,
+        n_condit_features=n_condit_features
+        )
     train_loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=1)
-    valid_dataset = Forecasting_Dataset(datatype,mode='valid', time_weaver=time_weaver, true_unconditional=true_unconditional, history_length=history_length)
+    valid_dataset = Forecasting_Dataset(datatype,
+        mode='valid',
+        time_weaver=time_weaver,
+        true_unconditional=true_unconditional,
+        history_length=history_length,
+        n_condit_features=n_condit_features
+        )
     valid_loader = DataLoader(
         valid_dataset, batch_size=batch_size, shuffle=0)
-    test_dataset = Forecasting_Dataset(datatype,mode='test', time_weaver=time_weaver, true_unconditional=true_unconditional, history_length=history_length)
+    test_dataset = Forecasting_Dataset(datatype,
+        mode='test',
+        time_weaver=time_weaver,
+        true_unconditional=true_unconditional,
+        history_length=history_length,
+        n_condit_features=n_condit_features
+        )
     test_loader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=0)
 

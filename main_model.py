@@ -299,11 +299,12 @@ class CSDI_Physio(CSDI_base):
 
 
 class CSDI_Forecasting(CSDI_base):
-    def __init__(self, config, device, target_dim, time_weaver=False):
+    def __init__(self, config, device, target_dim, time_weaver=False, n_condit_features=-1):
         super(CSDI_Forecasting, self).__init__(target_dim, config, device)
         self.target_dim_base = target_dim
         self.num_sample_features = config["model"]["num_sample_features"]
         self.time_weaver = time_weaver
+        self.n_condit_features = n_condit_features
         if time_weaver:
             self.meta_tokenizer = torch.nn.Linear(config["weaver"]["k_meta"], config["weaver"]["d_meta"], device=device)
             self.metadata_encoders = [
@@ -323,6 +324,8 @@ class CSDI_Forecasting(CSDI_base):
         if self.time_weaver:
             metadata = batch["metadata"].to(self.device).float()
             metadata = metadata.permute(0, 2, 1)
+        if self.n_condit_features > 0:
+            condit_features = batch["condit_features"].to(self.device).int()
 
         observed_data = observed_data.permute(0, 2, 1)
         observed_mask = observed_mask.permute(0, 2, 1)
@@ -341,10 +344,11 @@ class CSDI_Forecasting(CSDI_base):
             for_pattern_mask,
             cut_length,
             feature_id, 
-            metadata if self.time_weaver else None
+            metadata if self.time_weaver else None,
+            condit_features if self.n_condit_features > 0 else None
         )        
 
-    def sample_features(self, observed_data, observed_mask, feature_id, gt_mask, metadata=None):
+    def sample_features(self, observed_data, observed_mask, feature_id, gt_mask, metadata=None, condit_features=None):
         size = self.num_sample_features
         self.target_dim = size
         extracted_data = []
@@ -352,21 +356,27 @@ class CSDI_Forecasting(CSDI_base):
         extracted_feature_id = []
         extracted_gt_mask = []
 
+        if condit_features is not None:
+            cf_set = set([x.item() for x in condit_features[0]])
+            indices_set = set([x.item() for x in feature_id[0]])
+            cf_indices = np.array(list(cf_set))
+            index_options = np.array(list(indices_set - cf_set))
 
         for k in range(len(observed_data)):
-            ind = np.arange(self.target_dim_base)
-            np.random.shuffle(ind)
+            if condit_features is not None:
+                np.random.shuffle(index_options)
+                ind = np.concatenate([cf_indices, index_options])
+            else:
+                ind = np.random.choice(self.target_dim_base, self.target_dim_base, replace=False)
             extracted_data.append(observed_data[k,ind[:size]])
             extracted_mask.append(observed_mask[k,ind[:size]])
             extracted_feature_id.append(feature_id[k,ind[:size]])
             extracted_gt_mask.append(gt_mask[k,ind[:size]])
-        
 
         extracted_data = torch.stack(extracted_data,0)
         extracted_mask = torch.stack(extracted_mask,0)
         extracted_feature_id = torch.stack(extracted_feature_id,0)
         extracted_gt_mask = torch.stack(extracted_gt_mask,0)
-
         return extracted_data, extracted_mask, extracted_feature_id, extracted_gt_mask, metadata
 
 
@@ -401,12 +411,13 @@ class CSDI_Forecasting(CSDI_base):
             _,
             _,
             feature_id, 
-            metadata # [B, K_meta, L]
+            metadata, # [B, K_meta, L]
+            condit_features
         ) = self.process_data(batch)
 
         if is_train == 1 and (self.target_dim_base > self.num_sample_features):
             observed_data, observed_mask, feature_id, gt_mask, metadata = \
-                    self.sample_features(observed_data, observed_mask, feature_id, gt_mask, metadata)
+                    self.sample_features(observed_data, observed_mask, feature_id, gt_mask, metadata, condit_features=condit_features)
         else:
             self.target_dim = self.target_dim_base
             feature_id = None
@@ -417,12 +428,11 @@ class CSDI_Forecasting(CSDI_base):
             cond_mask = self.get_test_pattern_mask(
                 observed_mask, gt_mask # returns gt_mask since gt_mask is a subset of observed_mask 
             )
-
+        
         side_info = self.get_side_info(observed_tp, cond_mask, feature_id)
 
         if self.time_weaver:
             metadata = self.time_weave(metadata) # [B, channel, K, L]
-
 
         loss_func = self.calc_loss if is_train == 1 else self.calc_loss_valid
 
@@ -438,20 +448,20 @@ class CSDI_Forecasting(CSDI_base):
             _,
             _,
             feature_id, 
-            metadata
+            metadata,
+            condit_features
         ) = self.process_data(batch)
 
         with torch.no_grad():
             cond_mask = gt_mask 
             target_mask = observed_mask * (1-gt_mask)
-
             side_info = self.get_side_info(observed_tp, cond_mask)
 
             if self.time_weaver:
                 metadata = self.time_weave(metadata) # [B, channel, K, L]
 
             print('Imputing', flush=True)
-            samples = self.impute(observed_data, cond_mask, side_info, metadata, n_samples)
+            samples = self.impute(observed_data, cond_mask, side_info, metadata, condit_features, n_samples)
 
         return samples, observed_data, target_mask, observed_mask, observed_tp
 
