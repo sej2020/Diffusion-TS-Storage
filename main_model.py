@@ -335,7 +335,7 @@ class CSDI_Forecasting(CSDI_base):
         for_pattern_mask = observed_mask
 
         feature_id=torch.arange(self.target_dim_base).unsqueeze(0).expand(observed_data.shape[0],-1).to(self.device)
-
+        
         return (
             observed_data,
             observed_mask,
@@ -372,7 +372,7 @@ class CSDI_Forecasting(CSDI_base):
             extracted_mask.append(observed_mask[k,ind[:size]])
             extracted_feature_id.append(feature_id[k,ind[:size]])
             extracted_gt_mask.append(gt_mask[k,ind[:size]])
-
+        
         extracted_data = torch.stack(extracted_data,0)
         extracted_mask = torch.stack(extracted_mask,0)
         extracted_feature_id = torch.stack(extracted_feature_id,0)
@@ -461,7 +461,7 @@ class CSDI_Forecasting(CSDI_base):
                 metadata = self.time_weave(metadata) # [B, channel, K, L]
 
             print('Imputing', flush=True)
-            samples = self.impute(observed_data, cond_mask, side_info, metadata, condit_features, n_samples)
+            samples = self.impute(observed_data, cond_mask, side_info, metadata, n_samples)
 
         return samples, observed_data, target_mask, observed_mask, observed_tp
 
