@@ -3,9 +3,20 @@ from torch.utils.data import DataLoader, Dataset
 import pandas as pd
 import numpy as np
 import torch
+from sklearn.decomposition import PCA
 
 class Forecasting_Dataset(Dataset):
-    def __init__(self, datatype, mode="train", time_weaver=False, true_unconditional=False, history_length=168, n_condit_features=-1):
+    def __init__(
+            self,
+            datatype,
+            mode="train",
+            time_weaver=False,
+            true_unconditional=False,
+            history_length=168,
+            n_condit_features=-1,
+            condit_features=None,
+            condit_strat="pca"
+            ):
         if not true_unconditional:
             self.history_length = history_length
         else:
@@ -32,8 +43,16 @@ class Forecasting_Dataset(Dataset):
         self.true_presence_mask = true_presence_mask
 
         if self.n_condit_features > 0:
-            # random feature selection
-            self.condit_features = np.random.choice(self.main_data.shape[1], self.n_condit_features, replace=False)
+            if condit_features is not None:
+                self.condit_features = condit_features
+            else:
+                if condit_strat == "pca":
+                    self.condit_features = self._pca_features(self.main_data, self.n_condit_features)
+                elif condit_strat == "cosine":
+                    self.condit_features = self._cosine_features(self.main_data, self.n_condit_features)
+                elif condit_strat == "random":
+                    self.condit_features = np.random.choice(self.main_data.shape[1], self.n_condit_features, replace=False)
+
             self.mask_data = np.zeros_like(self.main_data)
             self.mask_data[:, self.condit_features] = 1
             self.mask_data = self.mask_data * true_presence_mask
@@ -41,7 +60,6 @@ class Forecasting_Dataset(Dataset):
         else:
             self.mask_data = true_presence_mask
             # true presence mask and mask data are the same
-        
         total_length = len(self.main_data)
 
         # Whenever we expand to other datasets and there might be metadata to use in Time Weaver:
@@ -121,14 +139,33 @@ class Forecasting_Dataset(Dataset):
     
     def __len__(self):
         return len(self.use_index)
+    
+    def _pca_features(self, data, n_condit_features):
+        print('\n$$$ PCA $$$\n')
+        pca = PCA(n_components=1)
+        pca.fit(data)
+        pca_sorted_features = np.argsort(np.abs(pca.components_))
+        return pca_sorted_features[0, -n_condit_features:]
 
-def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False, history_length=168, n_condit_features=-1):
+    def _cosine_features(self, data, n_condit_features):
+        print('\n$$$ Cosine $$$\n')
+        cosine_sim = np.zeros((data.shape[1], data.shape[1]))
+        for i in range(data.shape[1]):
+            for j in range(data.shape[1]):
+                cosine_sim[i,j] = np.dot(data[:,i], data[:,j]) / (np.linalg.norm(data[:,i]) * np.linalg.norm(data[:,j]) + 1e-6)
+        cosine_sorted_features = np.argsort(np.sum(np.abs(cosine_sim), axis=0))
+        return cosine_sorted_features[-n_condit_features:]
+
+
+def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False, history_length=168, n_condit_features=-1, condit_strat="pca"):
     dataset = Forecasting_Dataset(datatype,
         mode='train',
         time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
-        n_condit_features=n_condit_features
+        n_condit_features=n_condit_features,
+        condit_features=None,
+        condit_strat=condit_strat
         )
     train_loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=1)
@@ -137,7 +174,8 @@ def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_uncon
         time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
-        n_condit_features=n_condit_features
+        n_condit_features=n_condit_features,
+        condit_features=dataset.condit_features
         )
     valid_loader = DataLoader(
         valid_dataset, batch_size=batch_size, shuffle=0)
@@ -146,7 +184,8 @@ def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_uncon
         time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
-        n_condit_features=n_condit_features
+        n_condit_features=n_condit_features,
+        condit_features=dataset.condit_features
         )
     test_loader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=0)

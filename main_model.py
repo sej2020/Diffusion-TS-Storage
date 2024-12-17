@@ -131,7 +131,6 @@ class CSDI_base(nn.Module):
 
         # predicts the noise tensor that was added to observed data to yield noisy data
         predicted = self.diffmodel(total_input, side_info, t, metadata)  # (B,K,L)
-
         target_mask = observed_mask - cond_mask
 
         residual = (noise - predicted) * target_mask
@@ -240,6 +239,7 @@ class CSDI_base(nn.Module):
 
             for i in range(len(cut_length)):  # to avoid double evaluation
                 target_mask[i, ..., 0 : cut_length[i].item()] = 0
+
         return samples, observed_data, target_mask, observed_mask, observed_tp
 
 
