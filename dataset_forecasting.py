@@ -58,6 +58,7 @@ class Forecasting_Dataset(Dataset):
             self.mask_data = self.mask_data * true_presence_mask
             # mask data is only 1s for conditional features when present in the data, 0s otherwise
         else:
+            self.condit_features = None
             self.mask_data = true_presence_mask
             # true presence mask and mask data are the same
         total_length = len(self.main_data)

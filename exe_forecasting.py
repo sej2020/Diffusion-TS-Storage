@@ -4,24 +4,33 @@ import datetime
 import json
 import yaml
 import os
+import pathlib
 
 from main_model import CSDI_Forecasting
 from dataset_forecasting import get_dataloader
 from utils import train, evaluate
 
 parser = argparse.ArgumentParser(description="CSDI")
+# high-level options
+parser.add_argument("--train", action="store_true") # False by default
+parser.add_argument("--eval", action="store_true") # False by default
+# model config
 parser.add_argument("--config", type=str, default="base_forecasting.yaml")
 parser.add_argument("--datatype", type=str, default="electricity")
 parser.add_argument('--device', default='cuda:0', help='Device for Attack')
 parser.add_argument("--seed", type=int, default=1)
+# training options
 parser.add_argument("--pseudo_unconditional", action="store_true")
 parser.add_argument("--true_unconditional", action="store_true")
-parser.add_argument("--modelfolder", type=str, default="")
 parser.add_argument("--nsample", type=int, default=100)
 parser.add_argument("--time_weaver", action="store_true")
 parser.add_argument("--history_length", type=int, default=168)
 parser.add_argument("--n_condit_features", type=int, default=-1)
-parser.add_argument("--condit_strat", type=str, default="pca")
+# making condit strat one of a few options
+parser.add_argument("--condit_strat", choices=["pca", "random", "cosine"], default="pca")
+# file options
+parser.add_argument("--pre_trained_model_path", type=str, default="", help="If this is null, then the model will be trained from scratch")
+parser.add_argument("--out_folder", type=str, default="", help="The folder where the model will be saved")
 
 args = parser.parse_args()
 print(args)
@@ -29,6 +38,13 @@ print(args)
 path = "config/" + args.config
 with open(path, "r") as f:
     config = yaml.safe_load(f)
+
+assert args.train or args.eval, "Must either train or evaluate"
+assert not (args.pre_trained_model_path and args.out_folder), "Cannot have both pre_trained_model_path and out_folder, out_folder is if the model is trained from scratch"
+assert not (args.pseudo_unconditional and args.true_unconditional), "Cannot be both pseudo and true unconditional"
+assert not ((args.pseudo_unconditional or args.true_unconditional) and args.n_condit_features > 0), "Cannot be unconditional and have conditional features"
+assert not args.n_condit_features > config["model"]["num_sample_features"], "Cannot have more conditional features than sample features"
+assert args.pre_trained_model_path if not args.train else True, "If you are evaluating, you must have a pre-trained model folder"
 
 if args.datatype == 'electricity':
     target_dim = 370
@@ -44,23 +60,19 @@ config["model"]["history_length"] = args.history_length
 config["model"]["n_condit_features"] = args.n_condit_features
 config["model"]["condit_strat"] = args.condit_strat
 
-assert not (args.pseudo_unconditional and args.true_unconditional), "Cannot be both pseudo and true unconditional"
-assert not ((args.pseudo_unconditional or args.true_unconditional) and args.n_condit_features > 0), "Cannot be unconditional and have conditional features"
-assert not args.n_condit_features > config["model"]["num_sample_features"], "Cannot have more conditional features than sample features"
-
 print(json.dumps(config, indent=4))
 
-if args.modelfolder:
-    foldername = "./save/" + args.modelfolder
-    config = json.load(open(foldername + "/config.json"))
+if args.pre_trained_model_path:
+    foldername = pathlib.Path(args.pre_trained_model_path).parent
+    config = json.load(open(foldername / "config.json"))
     if config["weaver"]["included"]:
         args.time_weaver = True
 else:
-    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    foldername = "./save/testing_" + current_time + "/"
-    # foldername = "./save/forecasting_" + args.datatype + '_' + current_time + "/"
-    # foldername = "./save/hist_len_expr/fc_" + str(args.history_length) + '_' + current_time + "/"
-    # foldername = "./save/feature_num_expr_pca/fc_" + str(args.n_condit_features) + '_' + current_time + "/"
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    if args.out_folder:
+        foldername = "./save/" + args.out_folder + "/fc_" + current_time + "/"
+    else:
+        foldername = "./save/fc_" + current_time + "/"
     print('model folder:', foldername)
     os.makedirs(foldername, exist_ok=True)
     with open(foldername + "config.json", "w") as f:
@@ -81,14 +93,13 @@ if args.time_weaver:
     config["weaver"]["included"] = True
     config["weaver"]["k_meta"] = train_loader.dataset.metadata.shape[1]
 
-
-if not args.modelfolder:
+if not args.pre_trained_model_path:
     with open(foldername + "config.json", "w") as f:
         json.dump(config, f, indent=4)
 
 model = CSDI_Forecasting(config, args.device, target_dim, time_weaver=args.time_weaver, n_condit_features=args.n_condit_features).to(args.device)
 
-if args.modelfolder == "":
+if args.train:
     train(
         model,
         config["train"],
@@ -99,14 +110,16 @@ if args.modelfolder == "":
         foldername=foldername,
     )
 else:
-    model.load_state_dict(torch.load("./save/" + args.modelfolder + "/model.pth", weights_only=True))
+    model.load_state_dict(torch.load(args.pre_trained_model_path, weights_only=True))
+
 model.target_dim = target_dim
 
-evaluate(
-    model,
-    test_loader,
-    nsample=args.nsample,
-    scaler=scaler,
-    mean_scaler=mean_scaler,
-    foldername=foldername,
-)
+if args.eval:
+    evaluate(
+        model,
+        test_loader,
+        nsample=args.nsample,
+        scaler=scaler,
+        mean_scaler=mean_scaler,
+        foldername=foldername,
+    )

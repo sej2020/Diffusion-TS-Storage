@@ -131,7 +131,8 @@ class CSDI_base(nn.Module):
 
         # predicts the noise tensor that was added to observed data to yield noisy data
         predicted = self.diffmodel(total_input, side_info, t, metadata)  # (B,K,L)
-        target_mask = observed_mask - cond_mask
+        breakpoint()
+        target_mask = observed_mask - cond_mask # just 1s after prediction start
 
         residual = (noise - predicted) * target_mask
         num_eval = target_mask.sum()
@@ -152,7 +153,7 @@ class CSDI_base(nn.Module):
         B, K, L = observed_data.shape
         imputed_samples = torch.zeros(B, n_samples, K, L).to(self.device)
 
-        for i in range(n_samples):
+        for i in range(n_samples): # this loop could be parallelized
             print("iter", i, flush=True)
             # generate noisy observation for pseudo_unconditional model
             if self.is_pseudo_unconditional == True:
@@ -385,7 +386,6 @@ class CSDI_Forecasting(CSDI_base):
 
         time_embed = self.time_embedding(observed_tp, self.emb_time_dim)  # (B,L,emb)
         time_embed = time_embed.unsqueeze(2).expand(-1, -1, self.target_dim, -1)
-
         if self.target_dim == self.target_dim_base:
             feature_embed = self.embed_layer(
                 torch.arange(self.target_dim).to(self.device)
@@ -414,6 +414,16 @@ class CSDI_Forecasting(CSDI_base):
             metadata, # [B, K_meta, L]
             condit_features
         ) = self.process_data(batch)
+        """
+        >>> gt_mask = [0, 0, 1, 1]
+        ...           [0, 0, 1, 1]
+        ...           ------------ <- pred start
+        ...           [0, 0, 0, 0]
+        >>> observed_mask = [0, 0, 1, 1]
+        ...                 [0, 0, 1, 1]
+        ...                 ------------ <- pred start
+        ...                 [1, 1, 1, 1]   
+        """
 
         if is_train == 1 and (self.target_dim_base > self.num_sample_features):
             observed_data, observed_mask, feature_id, gt_mask, metadata = \
@@ -454,7 +464,7 @@ class CSDI_Forecasting(CSDI_base):
 
         with torch.no_grad():
             cond_mask = gt_mask 
-            target_mask = observed_mask * (1-gt_mask)
+            target_mask = observed_mask * (1-gt_mask) # just 1s after prediction start
             side_info = self.get_side_info(observed_tp, cond_mask)
 
             if self.time_weaver:
