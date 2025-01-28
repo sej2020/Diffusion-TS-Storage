@@ -13,9 +13,6 @@ class Forecasting_Dataset(Dataset):
             time_weaver=False,
             true_unconditional=False,
             history_length=168,
-            n_condit_features=-1,
-            condit_features=None,
-            condit_strat="pca"
             ):
         if not true_unconditional:
             self.history_length = history_length
@@ -23,7 +20,12 @@ class Forecasting_Dataset(Dataset):
             self.history_length = 0
         self.pred_length = 24
         self.time_weaver = time_weaver
-        self.n_condit_features = n_condit_features
+
+        # will be instantiated if feature selection is used
+        self.n_condit_features = None
+        self.condit_features = None
+        self.pred_var = None
+        self.pred_var_idx = None
 
         if datatype == 'electricity':
             datafolder = './data/electricity_nips'
@@ -38,28 +40,11 @@ class Forecasting_Dataset(Dataset):
         paths=datafolder+'/meanstd.pkl'
         with open(paths, 'rb') as f:
             self.mean_data, self.std_data = pickle.load(f)
-        
+
         self.main_data = (self.main_data - self.mean_data) / self.std_data
         self.true_presence_mask = true_presence_mask
 
-        if self.n_condit_features > 0:
-            if condit_features is not None:
-                self.condit_features = condit_features
-            else:
-                if condit_strat == "pca":
-                    self.condit_features = self._pca_features(self.main_data, self.n_condit_features)
-                elif condit_strat == "cosine":
-                    self.condit_features = self._cosine_features(self.main_data, self.n_condit_features)
-                elif condit_strat == "random":
-                    self.condit_features = np.random.choice(self.main_data.shape[1], self.n_condit_features, replace=False)
-
-            self.mask_data = np.zeros_like(self.main_data)
-            self.mask_data[:, self.condit_features] = 1
-            self.mask_data = self.mask_data * true_presence_mask
-            # mask data is only 1s for conditional features when present in the data, 0s otherwise
-        else:
-            self.condit_features = None
-            self.mask_data = true_presence_mask
+        self.mask_data = true_presence_mask
             # true presence mask and mask data are the same
         total_length = len(self.main_data)
 
@@ -110,21 +95,21 @@ class Forecasting_Dataset(Dataset):
     def __getitem__(self, orgindex):
         """
         If condit features are used, (ex. idx 2,3)
-        >>> gt_mask = [0, 0, 1, 1]
-        ...           [0, 0, 1, 1]
+        >>> gt_mask = [1, 1, 1, 1]
+        ...           [1, 1, 1, 1]
         ...           ------------ <- pred start
-        ...           [0, 0, 0, 0]
-        >>> observed_mask = [0, 0, 1, 1]
-        ...                 [0, 0, 1, 1]
+        ...           [1, 1, 1, 0]
+        >>> observed_mask = [1, 1, 1, 1]
+        ...                 [1, 1, 1, 1]
         ...                 ------------ <- pred start
         ...                 [1, 1, 1, 1]   
         """
         index = self.use_index[orgindex]
         target_mask = self.mask_data[index:index+self.seq_length].copy()
-        target_mask[-self.pred_length:] = 0. #pred mask for test pattern strategy
+        if self.pred_var is not None:
+            target_mask[-self.pred_length:, self.pred_var_idx] = 0. # zero after prediction start for the target variable
+
         mask_data = self.mask_data[index:index+self.seq_length].copy()
-        true_mask = self.true_presence_mask[index:index+self.seq_length].copy()
-        mask_data[-self.pred_length:] = true_mask[-self.pred_length:] # ground truth for prediction is present
         s = {
             'observed_data': self.main_data[index:index+self.seq_length],
             'observed_mask': mask_data,
@@ -134,28 +119,10 @@ class Forecasting_Dataset(Dataset):
         }
         if self.time_weaver:
             s['metadata'] = self.metadata[index:index+self.seq_length]
-        if self.n_condit_features > 0:
-            s['condit_features'] = self.condit_features
         return s
     
     def __len__(self):
         return len(self.use_index)
-    
-    def _pca_features(self, data, n_condit_features):
-        print('\n$$$ PCA $$$\n')
-        pca = PCA(n_components=1)
-        pca.fit(data)
-        pca_sorted_features = np.argsort(np.abs(pca.components_))
-        return pca_sorted_features[0, -n_condit_features:]
-
-    def _cosine_features(self, data, n_condit_features):
-        print('\n$$$ Cosine $$$\n')
-        cosine_sim = np.zeros((data.shape[1], data.shape[1]))
-        for i in range(data.shape[1]):
-            for j in range(data.shape[1]):
-                cosine_sim[i,j] = np.dot(data[:,i], data[:,j]) / (np.linalg.norm(data[:,i]) * np.linalg.norm(data[:,j]) + 1e-6)
-        cosine_sorted_features = np.argsort(np.sum(np.abs(cosine_sim), axis=0))
-        return cosine_sorted_features[-n_condit_features:]
 
 
 def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_unconditional=False, history_length=168, n_condit_features=-1, condit_strat="pca"):
@@ -164,34 +131,67 @@ def get_dataloader(datatype, device, batch_size=8, time_weaver=False, true_uncon
         time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
-        n_condit_features=n_condit_features,
-        condit_features=None,
-        condit_strat=condit_strat
         )
-    train_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=1)
     valid_dataset = Forecasting_Dataset(datatype,
         mode='valid',
         time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
-        n_condit_features=n_condit_features,
-        condit_features=dataset.condit_features
         )
-    valid_loader = DataLoader(
-        valid_dataset, batch_size=batch_size, shuffle=0)
     test_dataset = Forecasting_Dataset(datatype,
         mode='test',
         time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
-        n_condit_features=n_condit_features,
-        condit_features=dataset.condit_features
         )
+    train_loader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=1)
+    valid_loader = DataLoader(
+        valid_dataset, batch_size=batch_size, shuffle=0)
     test_loader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=0)
 
     scaler = torch.from_numpy(dataset.std_data).to(device).float()
     mean_scaler = torch.from_numpy(dataset.mean_data).to(device).float()
 
+    if n_condit_features > 0:
+        if condit_strat == "pca":
+            condit_features = pca_feature_selection(dataset.main_data, n_condit_features)
+        elif condit_strat == "cosine":
+            condit_features = cosine_feature_selection(dataset.main_data, n_condit_features)
+        elif condit_strat == "random":
+            condit_features = np.random.choice(dataset.main_data.shape[1], n_condit_features, replace=False)
+
+        pred_var = np.random.choice(condit_features, 1)                  # random for experiments, but should be customizable in the future
+        pred_var_idx = np.where(condit_features == pred_var)[0][0]
+
+        for ds in [dataset, valid_dataset, test_dataset]:
+            ds.n_condit_features = n_condit_features
+            ds.condit_features = condit_features
+            ds.pred_var = pred_var
+            ds.pred_var_idx = pred_var_idx
+            ds.main_data = ds.main_data[:, ds.condit_features]
+            ds.mask_data = ds.mask_data[:, ds.condit_features]
+
+        scaler = scaler[condit_features]
+        mean_scaler = mean_scaler[condit_features]
+
     return train_loader, valid_loader, test_loader, scaler, mean_scaler
+
+
+
+def pca_feature_selection(data, n_condit_features):
+    print('\n$$$ PCA $$$\n')
+    pca = PCA(n_components=1)
+    pca.fit(data)
+    pca_sorted_features = np.argsort(np.abs(pca.components_))
+    return pca_sorted_features[0, -n_condit_features:]
+
+def cosine_feature_selection(data, n_condit_features):
+    print('\n$$$ Cosine $$$\n')
+    cosine_sim = np.zeros((data.shape[1], data.shape[1]))
+    for i in range(data.shape[1]):
+        for j in range(data.shape[1]):
+            cosine_sim[i,j] = np.dot(data[:,i], data[:,j]) / (np.linalg.norm(data[:,i]) * np.linalg.norm(data[:,j]) + 1e-6)
+    cosine_sorted_features = np.argsort(np.sum(np.abs(cosine_sim), axis=0))
+    return cosine_sorted_features[-n_condit_features:]

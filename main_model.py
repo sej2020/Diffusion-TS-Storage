@@ -131,7 +131,6 @@ class CSDI_base(nn.Module):
 
         # predicts the noise tensor that was added to observed data to yield noisy data
         predicted = self.diffmodel(total_input, side_info, t, metadata)  # (B,K,L)
-        breakpoint()
         target_mask = observed_mask - cond_mask # just 1s after prediction start
 
         residual = (noise - predicted) * target_mask
@@ -325,8 +324,6 @@ class CSDI_Forecasting(CSDI_base):
         if self.time_weaver:
             metadata = batch["metadata"].to(self.device).float()
             metadata = metadata.permute(0, 2, 1)
-        if self.n_condit_features > 0:
-            condit_features = batch["condit_features"].to(self.device).int()
 
         observed_data = observed_data.permute(0, 2, 1)
         observed_mask = observed_mask.permute(0, 2, 1)
@@ -346,10 +343,9 @@ class CSDI_Forecasting(CSDI_base):
             cut_length,
             feature_id, 
             metadata if self.time_weaver else None,
-            condit_features if self.n_condit_features > 0 else None
         )        
 
-    def sample_features(self, observed_data, observed_mask, feature_id, gt_mask, metadata=None, condit_features=None):
+    def sample_features(self, observed_data, observed_mask, feature_id, gt_mask, metadata=None):
         size = self.num_sample_features
         self.target_dim = size
         extracted_data = []
@@ -357,18 +353,8 @@ class CSDI_Forecasting(CSDI_base):
         extracted_feature_id = []
         extracted_gt_mask = []
 
-        if condit_features is not None:
-            cf_set = set([x.item() for x in condit_features[0]])
-            indices_set = set([x.item() for x in feature_id[0]])
-            cf_indices = np.array(list(cf_set))
-            index_options = np.array(list(indices_set - cf_set))
-
         for k in range(len(observed_data)):
-            if condit_features is not None:
-                np.random.shuffle(index_options)
-                ind = np.concatenate([cf_indices, index_options])
-            else:
-                ind = np.random.choice(self.target_dim_base, self.target_dim_base, replace=False)
+            ind = np.random.choice(self.target_dim_base, self.target_dim_base, replace=False)
             extracted_data.append(observed_data[k,ind[:size]])
             extracted_mask.append(observed_mask[k,ind[:size]])
             extracted_feature_id.append(feature_id[k,ind[:size]])
@@ -412,22 +398,20 @@ class CSDI_Forecasting(CSDI_base):
             _,
             feature_id, 
             metadata, # [B, K_meta, L]
-            condit_features
         ) = self.process_data(batch)
         """
-        >>> gt_mask = [0, 0, 1, 1]
-        ...           [0, 0, 1, 1]
+        >>> gt_mask = [1, 1, 1, 1]
+        ...           [1, 1, 1, 1]
         ...           ------------ <- pred start
-        ...           [0, 0, 0, 0]
-        >>> observed_mask = [0, 0, 1, 1]
-        ...                 [0, 0, 1, 1]
+        ...           [1, 1, 1, 0]
+        >>> observed_mask = [1, 1, 1, 1]
+        ...                 [1, 1, 1, 1]
         ...                 ------------ <- pred start
         ...                 [1, 1, 1, 1]   
         """
-
         if is_train == 1 and (self.target_dim_base > self.num_sample_features):
             observed_data, observed_mask, feature_id, gt_mask, metadata = \
-                    self.sample_features(observed_data, observed_mask, feature_id, gt_mask, metadata, condit_features=condit_features)
+                    self.sample_features(observed_data, observed_mask, feature_id, gt_mask, metadata)
         else:
             self.target_dim = self.target_dim_base
             feature_id = None
@@ -459,12 +443,11 @@ class CSDI_Forecasting(CSDI_base):
             _,
             feature_id, 
             metadata,
-            condit_features
         ) = self.process_data(batch)
 
         with torch.no_grad():
             cond_mask = gt_mask 
-            target_mask = observed_mask * (1-gt_mask) # just 1s after prediction start
+            target_mask = observed_mask * (1-gt_mask) # just 1s after prediction start for pred variables
             side_info = self.get_side_info(observed_tp, cond_mask)
 
             if self.time_weaver:

@@ -43,11 +43,7 @@ assert args.train or args.eval, "Must either train or evaluate"
 assert not (args.pre_trained_model_path and args.out_folder), "Cannot have both pre_trained_model_path and out_folder, out_folder is if the model is trained from scratch"
 assert not (args.pseudo_unconditional and args.true_unconditional), "Cannot be both pseudo and true unconditional"
 assert not ((args.pseudo_unconditional or args.true_unconditional) and args.n_condit_features > 0), "Cannot be unconditional and have conditional features"
-assert not args.n_condit_features > config["model"]["num_sample_features"], "Cannot have more conditional features than sample features"
 assert args.pre_trained_model_path if not args.train else True, "If you are evaluating, you must have a pre-trained model folder"
-
-if args.datatype == 'electricity':
-    target_dim = 370
 
 if args.n_condit_features == 0:
     print("When n_condit_features is 0, it is the same as true_unconditional. Setting true_unconditional to True, and ignoring n_condit_features")
@@ -97,6 +93,7 @@ if not args.pre_trained_model_path:
     with open(foldername + "config.json", "w") as f:
         json.dump(config, f, indent=4)
 
+target_dim = train_loader.dataset.main_data.shape[1]
 model = CSDI_Forecasting(config, args.device, target_dim, time_weaver=args.time_weaver, n_condit_features=args.n_condit_features).to(args.device)
 
 if args.train:
