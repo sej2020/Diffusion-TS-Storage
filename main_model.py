@@ -128,7 +128,6 @@ class CSDI_base(nn.Module):
         noisy_data = (current_alpha ** 0.5) * observed_data + (1.0 - current_alpha) ** 0.5 * noise
 
         total_input = self.set_input_to_diffmodel(noisy_data, observed_data, cond_mask)
-
         # predicts the noise tensor that was added to observed data to yield noisy data
         predicted = self.diffmodel(total_input, side_info, t, metadata)  # (B,K,L)
         target_mask = observed_mask - cond_mask # just 1s after prediction start
@@ -455,7 +454,7 @@ class CSDI_Forecasting(CSDI_base):
 
             print('Imputing', flush=True)
             samples = self.impute(observed_data, cond_mask, side_info, metadata, n_samples)
-
+        
         return samples, observed_data, target_mask, observed_mask, observed_tp
 
 

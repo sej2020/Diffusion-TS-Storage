@@ -4,7 +4,6 @@ import datetime
 import json
 import yaml
 import os
-import pathlib
 
 from main_model import CSDI_Forecasting
 from dataset_forecasting import get_dataloader
@@ -55,12 +54,15 @@ config["model"]["is_true_unconditional"] = args.true_unconditional
 config["model"]["history_length"] = args.history_length
 config["model"]["n_condit_features"] = args.n_condit_features
 config["model"]["condit_strat"] = args.condit_strat
+config["model"]["condit_features"] = None
+config["model"]["pred_var"] = None
+config["model"]["pred_var_idx"] = None
 
 print(json.dumps(config, indent=4))
 
 if args.pre_trained_model_path:
-    foldername = pathlib.Path(args.pre_trained_model_path).parent
-    config = json.load(open(foldername / "config.json"))
+    foldername = os.path.dirname(args.pre_trained_model_path)
+    config = json.load(open(foldername + "/config.json"))
     if config["weaver"]["included"]:
         args.time_weaver = True
 else:
@@ -83,11 +85,17 @@ train_loader, valid_loader, test_loader, scaler, mean_scaler = get_dataloader(
     true_unconditional=args.true_unconditional,
     history_length=args.history_length,
     n_condit_features=args.n_condit_features,
-    condit_strat=args.condit_strat
+    condit_strat=args.condit_strat,
+    config=config,
 )
 if args.time_weaver:
     config["weaver"]["included"] = True
     config["weaver"]["k_meta"] = train_loader.dataset.metadata.shape[1]
+
+if args.n_condit_features > 0:
+    config['model']["condit_features"] = train_loader.dataset.condit_features.tolist()
+    config['model']["pred_var"] = train_loader.dataset.pred_var.tolist()
+    config['model']["pred_var_idx"] = train_loader.dataset.pred_var_idx.tolist()
 
 if not args.pre_trained_model_path:
     with open(foldername + "config.json", "w") as f:
