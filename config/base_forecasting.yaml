@@ -2,8 +2,9 @@
 # [Default]
 
 train:
-  epochs: 100 # [100]
-  batch_size: 16 #[8]
+  epochs: 50 # [100]
+  batch_size: 16 # [8]
+  eval_batch_size: 16 #[8]
   lr: 1.0e-3
   itr_per_epoch: 1.0e+8
 
