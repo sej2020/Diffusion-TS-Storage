@@ -22,7 +22,6 @@ parser.add_argument("--seed", type=int, default=1)
 parser.add_argument("--pseudo_unconditional", action="store_true")
 parser.add_argument("--true_unconditional", action="store_true")
 parser.add_argument("--nsample", type=int, default=100)
-parser.add_argument("--time_weaver", action="store_true")
 parser.add_argument("--history_length", type=int, default=168)
 parser.add_argument("--pred_length", type=int, default=24)
 parser.add_argument("--n_condit_features", type=int, default=-1)
@@ -65,8 +64,6 @@ print(json.dumps(config, indent=4))
 if args.pre_trained_model_path:
     foldername = os.path.dirname(args.pre_trained_model_path)
     config = json.load(open(foldername + "/config.json"))
-    if config["weaver"]["included"]:
-        args.time_weaver = True
 else:
     current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     if args.out_folder:
@@ -84,7 +81,6 @@ train_loader, valid_loader, test_loader, scaler, mean_scaler = get_dataloader(
     device= args.device,
     batch_size=config["train"]["batch_size"],
     eval_batch_size=config["train"]["eval_batch_size"],
-    time_weaver=args.time_weaver,
     true_unconditional=args.true_unconditional,
     history_length=args.history_length,
     pred_length=args.pred_length,
@@ -93,9 +89,6 @@ train_loader, valid_loader, test_loader, scaler, mean_scaler = get_dataloader(
     config=config,
 )
 
-if args.time_weaver:
-    config["weaver"]["included"] = True
-    config["weaver"]["k_meta"] = train_loader.dataset.metadata.shape[1]
 
 if args.n_condit_features > 0:
     config['model']["condit_features"] = train_loader.dataset.condit_features.tolist()
@@ -107,7 +100,7 @@ if not args.pre_trained_model_path:
         json.dump(config, f, indent=4)
 
 target_dim = train_loader.dataset.main_data.shape[1]
-model = CSDI_Forecasting(config, args.device, target_dim, time_weaver=args.time_weaver, n_condit_features=args.n_condit_features).to(args.device)
+model = CSDI_Forecasting(config, args.device, target_dim, n_condit_features=args.n_condit_features).to(args.device)
 
 if args.train:
     train(

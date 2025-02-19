@@ -1,0 +1,5 @@
+# Store dataset nickname and path
+electricity: data/electricity/
+ettm1: data/ettm1/
+solar: data/solar/
+weather: data/weather/

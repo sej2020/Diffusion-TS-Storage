@@ -2,7 +2,7 @@
 # [Default]
 
 train:
-  epochs: 50 # [100]
+  epochs: 20 # [100]
   batch_size: 16 # [8]
   eval_batch_size: 16 #[8]
   lr: 1.0e-3
@@ -26,10 +26,4 @@ model:
   target_strategy: "test"
   num_sample_features: 64
   n_condit_features: None
-
-weaver:
-  included: False
-  d_meta: 64
-  meta_encoder_n_heads: 2
-  meta_encoder_n_layers: 2
 

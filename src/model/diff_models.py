@@ -85,7 +85,7 @@ class diff_CSDI(nn.Module):
             ]
         )
 
-    def forward(self, x, cond_info, diffusion_step, metadata=None):
+    def forward(self, x, cond_info, diffusion_step):
         B, inputdim, K, L = x.shape
 
         x = x.reshape(B, inputdim, K * L)
@@ -96,8 +96,7 @@ class diff_CSDI(nn.Module):
         diffusion_emb = self.diffusion_embedding(diffusion_step)
         skip = []
         for layer in self.residual_layers:
-            ### Time Weaver sends metadata embedding to the layer ###
-            x, skip_connection = layer(x, cond_info, diffusion_emb, metadata)
+            x, skip_connection = layer(x, cond_info, diffusion_emb)
             skip.append(skip_connection)
         x = torch.sum(torch.stack(skip), dim=0) / math.sqrt(len(self.residual_layers))
 
@@ -152,20 +151,14 @@ class ResidualBlock(nn.Module):
         y = y.reshape(B, L, channel, K).permute(0, 2, 3, 1).reshape(B, channel, K * L)
         return y
 
-    def forward(self, x, cond_info, diffusion_emb, metadata=None):
+    def forward(self, x, cond_info, diffusion_emb):
         B, channel, K, L = x.shape
         base_shape = x.shape
         x = x.reshape(B, channel, K * L)
-        if metadata is not None:
-            metadata = metadata.reshape(B, channel, K * L)
 
         diffusion_emb = self.diffusion_projection(diffusion_emb).unsqueeze(-1)  # (B,channel,1)
         
-        ### Time Weaver: metadata is added to the input of the layer ###
-        if metadata is not None:
-            y = x + diffusion_emb + metadata
-        else:
-            y = x + diffusion_emb
+        y = x + diffusion_emb
 
         y = self.forward_time(y, base_shape)
         y = self.forward_feature(y, base_shape)  # (B,channel,K*L)

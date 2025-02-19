@@ -10,7 +10,6 @@ class Forecasting_Dataset(Dataset):
             self,
             datatype,
             mode="train",
-            time_weaver=False,
             true_unconditional=False,
             history_length=168,
             pred_length=24,
@@ -20,7 +19,6 @@ class Forecasting_Dataset(Dataset):
         else:
             self.history_length = 0
         self.pred_length = pred_length
-        self.time_weaver = time_weaver
 
         # will be instantiated if feature selection is used
         self.n_condit_features = None
@@ -29,7 +27,7 @@ class Forecasting_Dataset(Dataset):
         self.pred_var_idx = None
 
         if datatype == 'electricity':
-            datafolder = './data/electricity_nips'
+            datafolder = './data/electricity'
         elif datatype == 'weather':
             datafolder = './data/weather'
             
@@ -49,23 +47,7 @@ class Forecasting_Dataset(Dataset):
         self.mask_data = true_presence_mask
             # true presence mask and mask data are the same
         total_length = len(self.main_data)
-
-        # Whenever we expand to other datasets and there might be metadata to use in Time Weaver:
-        if time_weaver:
-            meta_path = datafolder + '/metadata.pkl'
-            with open(meta_path, 'rb') as f:
-                meta_data = pickle.load(f)
-            # categorical metadata for Time Weaver
-            for i in range(meta_data.shape[1]): # iterating over feature index
-                meta_1hot = np.zeros((meta_data.shape[0], np.max(meta_data[:,i])))
-                meta_1hot[np.arange(meta_data.shape[0]), meta_data[:,i]-1] = 1
-                if i == 0:
-                    meta_1hot_all = meta_1hot
-                else:
-                    meta_1hot_all = np.concatenate((meta_1hot_all, meta_1hot), axis=1)
-
-            self.metadata = meta_1hot_all
-
+        
         # interleave the blocks of t/v/t data with an 80/10/10 split     
         all_index = list(range(total_length-self.seq_length))
         self.use_index = []
@@ -121,8 +103,6 @@ class Forecasting_Dataset(Dataset):
             'timepoints': np.arange(self.seq_length) * 1.0, 
             'feature_id': np.arange(self.main_data.shape[1]) * 1.0, 
         }
-        if self.time_weaver:
-            s['metadata'] = self.metadata[index:index+self.seq_length]
         return s
     
     def __len__(self):
@@ -134,7 +114,6 @@ def get_dataloader(
         device, 
         batch_size=8, 
         eval_batch_size=8,
-        time_weaver=False,
         true_unconditional=False,
         history_length=168,
         pred_length=24,
@@ -144,21 +123,18 @@ def get_dataloader(
         ):
     dataset = Forecasting_Dataset(datatype,
         mode='train',
-        time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
         pred_length=pred_length,
         )
     valid_dataset = Forecasting_Dataset(datatype,
         mode='valid',
-        time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
         pred_length=pred_length,
         )
     test_dataset = Forecasting_Dataset(datatype,
         mode='test',
-        time_weaver=time_weaver,
         true_unconditional=true_unconditional,
         history_length=history_length,
         pred_length=pred_length,
