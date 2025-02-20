@@ -1,0 +1,4 @@
+# For setting paths to model and specifying the device
+
+model_folder: "save/example_model/"
+device: "cuda:1"

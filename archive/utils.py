@@ -49,11 +49,7 @@ def train(
 
             lr_scheduler.step()
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
-            # original_target_dim = model.target_dim
-            # model.target_dim = 370
-            # evaluate(model, valid_loader, nsample=10, scaler=scaler, mean_scaler=mean_scaler, foldername=foldername, mode="valid")
-            # model.target_dim = original_target_dim
-            model.eval()
+
             avg_loss_valid = 0
             with torch.no_grad():
                 with tqdm(valid_loader, mininterval=5.0, maxinterval=50.0) as it:

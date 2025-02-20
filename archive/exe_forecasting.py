@@ -5,9 +5,9 @@ import json
 import yaml
 import os
 
-from src.model.main_model import CSDI_Forecasting
-from src.utils.dataset_forecasting import get_dataloader
-from src.utils.utils import train, evaluate
+from archive.main_model import CSDI_Forecasting
+from archive.dataset_forecasting import get_dataloader
+from archive.utils import train, evaluate
 
 parser = argparse.ArgumentParser(description="CSDI")
 # high-level options

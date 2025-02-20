@@ -2,7 +2,7 @@
 # [Default]
 
 train:
-  epochs: 20 # [100]
+  epochs: 1 # [100]
   batch_size: 16 # [8]
   eval_batch_size: 16 #[8]
   lr: 1.0e-3
@@ -23,7 +23,4 @@ model:
   is_pseudo_unconditional: 1
   timeemb: 128
   featureemb: 16
-  target_strategy: "test"
-  num_sample_features: 64
-  n_condit_features: None
-
+  training_feature_sample_size: 64
