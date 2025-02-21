@@ -104,7 +104,7 @@ if __name__ == '__main__':
         """)
     
     # Not Required
-    parser.add_argument("--n_generations", type=int, default=1, help="Number of generations to make for each data point")
+    parser.add_argument("--n_generations", type=int, default=1, help="Number of samples to generate for each data point")
     # Note: need to confirm that this is what tuning the noise parameter in model.impute actually does 
     parser.add_argument("--generation_variance", type=float, default=1, help="Variance of the generated data")
 
