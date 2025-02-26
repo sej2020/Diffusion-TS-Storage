@@ -40,20 +40,21 @@ def query(
     with open("config/query_config.yaml", "r") as f:
         global_config = yaml.safe_load(f)
     model_folder = pathlib.Path(global_config['model_folder'])
+    data_folder = pathlib.Path(global_config['data_folder'])
     DEVICE = global_config["device"] if torch.cuda.is_available() else "cpu"
     
     # Getting the conditional data for the model
     # Note: as of right now, this will be full data and the prediction mask
-    with open(model_folder / 'data.pkl', 'rb') as f:
+    with open(data_folder / 'data.pkl', 'rb') as f:
         # full data now, but in the future this will load just conditional data
         data = pickle.load(f)
     with open(model_folder / 'presence_mask.pkl', 'rb') as f:
         # mask to make full data just conditional data. unclear if this will be necessary in the future
         presence_mask = pickle.load(f)
-    with open(model_folder / 'labels.pkl', 'rb') as f:
-        # two dictionaries: {datetime: int} and {str: int}
+    with open(data_folder / 'labels.pkl', 'rb') as f:
+        # two dictionaries: {'YYYY-MM-DD HH:MM:SS': int} and {str: int}
         (time_stamps, var_names) = pickle.load(f)
-    with open(model_folder / 'meanstd.pkl', 'rb') as f:
+    with open(data_folder / 'meanstd.pkl', 'rb') as f:
         (means, stds) = pickle.load(f)
     
     # Getting the window: for now, the window size is only that of the query
@@ -65,7 +66,7 @@ def query(
     presence_mask_slice = presence_mask[start_idx:end_idx, var_slice]
 
     # normalizing the data
-    data_slice = (data_slice - means[var_slice]) / stds[var_slice]
+    data_slice = (data_slice - means[var_slice]) / (stds[var_slice] + 1e-9)
 
     # Initializing the model
     with open(model_folder / "config.json", "r") as f:
@@ -82,7 +83,7 @@ def query(
     samples = model.generate(data_slice, presence_mask_slice, var_slice, n_generations, generation_variance) 
 
     # denormalizing the data
-    samples = samples.cpu().numpy() * stds[var_slice] + means[var_slice]
+    samples = samples.cpu().numpy() * (stds[var_slice] + 1e-9) + means[var_slice]
 
     # of size [num_samples, L, K]
     return samples
@@ -96,8 +97,8 @@ if __name__ == '__main__':
 
     # Required
     parser.add_argument("--variables", type=list_of_vars, required=True, help="Variables to query the model for")
-    parser.add_argument("--start", type=datetime.datetime.fromisoformat, required=True, help="Start date for the query, please use format YYYY-MM-DDTHH:MM:SS, where the character T is a literal")
-    parser.add_argument("--end", type=datetime.datetime.fromisoformat, required=True, help="End date for the query, please use format YYYY-MM-DDTHH:MM:SS, where the character T is a literal")
+    parser.add_argument("--start", type=str, required=True, help="Start date for the query, please use format YYYY-MM-DD HH:MM:SS")
+    parser.add_argument("--end", type=str, required=True, help="End date for the query, please use format YYYY-MM-DD HH:MM:SS")
     parser.add_argument("--freq", type=str, required=True, 
         help="""
         Frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1H for hourly data
