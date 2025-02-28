@@ -28,12 +28,12 @@ options:
 
 ### How to Use the Training API
 
-The training API can be used to train a model on any dataset you would like that fits into RAM. You can find the script at `src.actions.train`. The global configuration for the training API is determined by the `config/train_config.yaml` file, but please do not edit any of the `diffusion` or `model` fields in the config at this moment, because flexible model configuration has not been implemented yet.
+The training API can be used to train a model on any dataset you would like that fits into RAM. Please follow the data formatting requirements in the README file in the `data/` folder. You can find the training script at `src/actions/train.py`. The global configuration for the training API is determined by the `config/train_config.yaml` file, but please do not edit any of the `diffusion` or `model` fields in the config at this moment, because flexible model configuration has not been implemented yet.
 
 The training API is accessible as a command-line utility with the following usage:
 
 ```
-usage: train.py [-h] --dataset DATASET --save_folder SAVE_FOLDER [--device DEVICE] [--compression COMPRESSION]
+usage: python -m src.actions.train [-h] --dataset DATASET --save_folder SAVE_FOLDER [--device DEVICE] [--compression COMPRESSION]
                 [--feature_retention_strategy {pca components,pca loadings,moments}] [--history_block_size {1,2,4,8,16,32,64,128,256}]
                 [--model_param_proportion MODEL_PARAM_PROPORTION] [--history_to_feature_ratio HISTORY_TO_FEATURE_RATIO] [--window_length WINDOW_LENGTH]
                 [--data_dayfirst]
