@@ -7,7 +7,7 @@ import argparse
 from src.utils.data import get_dataloader
 import os
 import yaml
-from src.utils.utils import train
+from src.utils.utils import train, evaluate
 from src.model.main_model import CSDI
 
 parser = argparse.ArgumentParser(description="Searching for the best parameters for compressing datasets")
@@ -30,7 +30,7 @@ parser.add_argument(
     help="The device to use for training"
     )
 parser.add_argument(
-    "--compression", type=fraction_to_float, default=1/3,
+    "--compression", type=fraction_to_float, default=1/2,
     help="The fraction of original dataset that we keep"
     )
 
@@ -68,7 +68,7 @@ parser.add_argument(
 parser.add_argument(
     "--data_dayfirst", action="store_true", # by default, this is False
     help="Whether your data csv has the day as the first element in the date string"
-    )
+    ) # necessary for weather dataset
 
 args = parser.parse_args()
 
@@ -95,5 +95,5 @@ with open(f'{args.save_folder}/config.yaml', 'w') as f:
     yaml.dump(config, f)
 
 model = CSDI(config, train_loader.dataset.main_data.shape[1], args.device).to(args.device)
-train(model, train_loader, eval_loader, args.save_folder)
-# evaluate()
+train(model, config['train'], train_loader, args.save_folder)
+evaluate(model, eval_loader, scaler, args.save_folder)

@@ -22,6 +22,7 @@ class ConditionalDataset(Dataset):
         history_to_feature_ratio,
         window_length,
         data_dayfirst = False,
+        train = True,
     ):
         self.dataset = dataset
         self.device = device
@@ -47,9 +48,10 @@ class ConditionalDataset(Dataset):
         # We have a dataset with T time points and N features (TxN data matrix).
         T, N = self.main_data.shape
         n_total_points = T * N
-        n_compressed_points = n_total_points * self.compression
+        n_compressed_points = int(n_total_points * self.compression)
         # We want to keep a certain proportion of the data as model parameters: n_model_points = int(n_compressed_points * model_param_proportion)
         self.n_model_points = 616033 # but for right now, it is just the base model, which has about 600k parameters
+        assert self.n_model_points < n_compressed_points, "Model parameters are more than the compressed data, please make your model smaller"
         exp_n_condit_points = n_compressed_points - self.n_model_points
         exp_point_compression = exp_n_condit_points / n_total_points
 
@@ -84,8 +86,12 @@ class ConditionalDataset(Dataset):
 
         total_length = len(self.main_data)
         
-        all_index = list(range(total_length-self.window_length))
-        self.use_index = all_index
+        if train:
+            all_index = list(range(total_length-self.window_length))     
+            self.use_index = all_index
+        else:
+            non_overlapping_index = list(range(0, total_length-self.window_length, self.window_length))
+            self.use_index = non_overlapping_index
 
 
     def __getitem__(self, orgindex):
@@ -94,8 +100,8 @@ class ConditionalDataset(Dataset):
         s = {
             'observed_data': self.main_data[index:index+self.window_length],
             'presence_mask': self.mask_data[index:index+self.window_length],
-            'timepoints': np.arange(self.window_length) * 1.0, 
-            'feature_id': np.arange(self.main_data.shape[1]) * 1.0, 
+            'timepoints': np.arange(self.window_length, dtype=np.int32), 
+            'feature_id': np.arange(self.main_data.shape[1], dtype=np.int32), 
         }
         return s
     
@@ -136,7 +142,7 @@ def get_dataloader(
     data_dayfirst = False,
     ):
 
-    conditional_dataset = ConditionalDataset(
+    conditional_dataset_train = ConditionalDataset(
         dataset = dataset,
         device = device,
         save_folder = save_folder,
@@ -149,17 +155,31 @@ def get_dataloader(
         data_dayfirst = data_dayfirst,
         )
     
-    scaler = torch.from_numpy(conditional_dataset.std_data).to(device).float()
-    mean_scaler = torch.from_numpy(conditional_dataset.mean_data).to(device).float()
+    conditional_dataset_eval = ConditionalDataset(
+        dataset = dataset,
+        device = device,
+        save_folder = save_folder,
+        compression = compression,
+        feature_retention_strategy = feature_retention_strategy,
+        history_block_size = history_block_size,
+        model_param_proportion = model_param_proportion,
+        history_to_feature_ratio = history_to_feature_ratio,
+        window_length = window_length,
+        data_dayfirst = data_dayfirst,
+        train = False,
+        )
+    
+    scaler = torch.from_numpy(conditional_dataset_train.std_data).to(device).float()
+    mean_scaler = torch.from_numpy(conditional_dataset_train.mean_data).to(device).float()
 
     with open(f"config/train_config.yaml", 'r') as f:
         config = yaml.safe_load(f)
 
     train_loader = DataLoader(
-        conditional_dataset, batch_size=config['train']['batch_size'], shuffle=1)
-    # is this a reference to the same object?
+        conditional_dataset_train, batch_size=config['train']['batch_size'], shuffle=1)
+
     eval_loader = DataLoader(
-        conditional_dataset, batch_size=config['train']['eval_batch_size'], shuffle=0)
+        conditional_dataset_eval, batch_size=1, shuffle=0)
 
     return train_loader, eval_loader, scaler, mean_scaler
 

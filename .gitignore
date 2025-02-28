@@ -1,4 +1,5 @@
 /save
 nohup.out
-*.csv
-*/solar
+data/
+*.log
+*_test/

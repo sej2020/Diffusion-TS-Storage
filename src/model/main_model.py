@@ -63,8 +63,8 @@ class CSDI(nn.Module):
         
         return (
             observed_data,
+            presence_mask,            
             observed_tp,
-            presence_mask,
             feature_id, 
         )
 
@@ -75,11 +75,11 @@ class CSDI(nn.Module):
         extracted_presence_mask = []
         extracted_feature_id = []
 
-        for k in range(len(observed_data)):
+        for b in range(len(observed_data)):
             ind = np.random.choice(self.dataset_dim, self.dataset_dim, replace=False) # random permutation
-            extracted_data.append(observed_data[k,ind[:size]])
-            extracted_presence_mask.append(presence_mask[k,ind[:size]])   
-            extracted_feature_id.append(feature_id[k,ind[:size]])
+            extracted_data.append(observed_data[b,ind[:size]])
+            extracted_presence_mask.append(presence_mask[b,ind[:size]])   
+            extracted_feature_id.append(feature_id[b,ind[:size]])
         
         extracted_data = torch.stack(extracted_data,0)
         extracted_presence_mask = torch.stack(extracted_presence_mask,0)
@@ -164,7 +164,7 @@ class CSDI(nn.Module):
         return total_input
 
 
-    def impute(self, observed_data, presence_mask, side_info, n_samples, generation_variance):
+    def impute(self, observed_data, presence_mask, side_info, n_samples, generation_variance=1):
         B, K, L = observed_data.shape
 
         if B == 1: # B will be 1 all of the time I think
@@ -201,9 +201,9 @@ class CSDI(nn.Module):
     def forward(self, observed_data, presence_mask, is_train=1):
         (
             observed_data, # [B, K, L]
+            presence_mask, # [B, K, L]            
             observed_tp, # [B, L]
-            presence_mask, # [B, K, L]
-            feature_id, 
+            feature_id, # [B, K]
         ) = self.process_data(observed_data, presence_mask)
         
         if is_train == 1 and (self.dataset_dim > self.training_feature_sample_size):
@@ -218,18 +218,16 @@ class CSDI(nn.Module):
         return loss_func(observed_data, presence_mask, side_info, is_train)
 
 
-    def generate(self, observed_data, presence_mask, feature_id, n_samples, generation_variance):
+    def generate(self, observed_data, presence_mask, feature_id, n_samples=1, generation_variance=1):
         (
             observed_data, # [B, K, L]
-            observed_tp, # [B, L]
             presence_mask, # [B, K, L]
+            observed_tp, # [B, L]
             feature_id, # [B, K]
         ) = self.process_data(observed_data, presence_mask, feature_id)
 
         with torch.no_grad():
             side_info = self.get_side_info(observed_tp, presence_mask, feature_id)
-
-            print('Imputing', flush=True)
             samples = self.impute(observed_data, presence_mask, side_info, n_samples, generation_variance)
         
         return samples.permute(0, 2, 1) # [n_samples, L, K]

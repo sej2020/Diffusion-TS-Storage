@@ -2,9 +2,8 @@
 # [Default]
 
 train:
-  epochs: 200 # [100]
+  epochs: 1000 # [100]
   batch_size: 16 # [8]
-  eval_batch_size: 16 #[8]
   lr: 1.0e-3
 
 diffusion:
