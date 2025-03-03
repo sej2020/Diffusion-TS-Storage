@@ -1,6 +1,10 @@
 # Diffusion Time Series Storage
 Fork of [CSDI](https://github.com/ermongroup/CSDI)
 
+Storage and analysis of time series data forms the foundation of IoT, edge computing, and personalized AI. In this paper, we present the design and architecture of a system for effectively using generative models for reducing the carbon footprint associated with time series data storage and processing. We utilize a score-based diffusion model for conditional time series generation that can replace conventional dataset storage at a fraction of the environmental impact. We intend integrate the model with a time-series database and provide low-friction interfaces for training and querying the model.
+
+This project is under development and can currently only support the compression of datasets that fit into RAM.
+
 ### How to Use the Query API
 
 You can use the `src/actions/query.py` script to query a model for regenerations of the dataset it represents. The model must be trained first using the training API. The global configuration for the query API is determined by the `config/query_config.yaml` file.
