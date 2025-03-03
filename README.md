@@ -1,5 +1,8 @@
 # Diffusion Time Series Storage
 
+<img src="https://github.com/sej2020/Diffusion-TS-Storage/blob/main/wavedb2_enhanced.jpg" width="180">
+
+
 Storage and analysis of time series data forms the foundation of IoT, edge computing, and personalized AI. In this paper, we present the design and architecture of a system for effectively using generative models for reducing the carbon footprint associated with time series data storage and processing. We utilize a score-based diffusion model for conditional time series generation that can replace conventional dataset storage at a fraction of the environmental impact. We intend integrate the model with a time-series database and provide low-friction interfaces for training and querying the model.
 
 This project is under development and can currently only support the compression of datasets that fit into RAM.
