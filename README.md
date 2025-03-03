@@ -1,5 +1,4 @@
 # Diffusion Time Series Storage
-Fork of [CSDI](https://github.com/ermongroup/CSDI)
 
 Storage and analysis of time series data forms the foundation of IoT, edge computing, and personalized AI. In this paper, we present the design and architecture of a system for effectively using generative models for reducing the carbon footprint associated with time series data storage and processing. We utilize a score-based diffusion model for conditional time series generation that can replace conventional dataset storage at a fraction of the environmental impact. We intend integrate the model with a time-series database and provide low-friction interfaces for training and querying the model.
 
@@ -67,3 +66,7 @@ options:
                         The time dimension of the training window
   --data_dayfirst       Whether your data csv has the day as the first element in the date string
 ```
+
+### Acknowledgements
+
+This repository builds on [CSDI](https://github.com/ermongroup/CSDI).
