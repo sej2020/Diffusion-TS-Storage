@@ -30,7 +30,7 @@ options:
 
 The training API can be used to train a model on any dataset you would like that fits into RAM. You can find the script at `src.actions.train`. The global configuration for the training API is determined by the `config/train_config.yaml` file, but please do not edit any of the `diffusion` or `model` fields in the config at this moment, because flexible model configuration has not been implemented yet.
 
-The training API is accessible as a command-line utility with the following usage:
+The training API is accessible as a command line utility with the following usage:
 
 ```
 usage: train.py [-h] --dataset DATASET --save_folder SAVE_FOLDER [--device DEVICE] [--compression COMPRESSION]

@@ -43,7 +43,7 @@ parser.add_argument(
 parser.add_argument(
     "--history_block_size", type=int, choices=[2**i for i in range(0, 9)], default=2, 
     help="""
-    The number of continuous time points in every slize of retained historical data. 
+    The number of continuous time points in every block of retained historical data. 
     This will not change the total number of historical data points that are preserved
     """
     )
