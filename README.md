@@ -1,5 +1,11 @@
 # Diffusion Time Series Storage
-Fork of [CSDI](https://github.com/ermongroup/CSDI)
+
+<img src="https://github.com/sej2020/Diffusion-TS-Storage/blob/main/wavedb2_enhanced.jpg" width="180">
+
+
+Storage and analysis of time series data forms the foundation of IoT, edge computing, and personalized AI. In this paper, we present the design and architecture of a system for effectively using generative models for reducing the carbon footprint associated with time series data storage and processing. We utilize a score-based diffusion model for conditional time series generation that can replace conventional dataset storage at a fraction of the environmental impact. We intend integrate the model with a time-series database and provide low-friction interfaces for training and querying the model.
+
+This project is under development and can currently only support the compression of datasets that fit into RAM.
 
 ### How to Use the Query API
 
@@ -28,12 +34,12 @@ options:
 
 ### How to Use the Training API
 
-The training API can be used to train a model on any dataset you would like that fits into RAM. You can find the script at `src.actions.train`. The global configuration for the training API is determined by the `config/train_config.yaml` file, but please do not edit any of the `diffusion` or `model` fields in the config at this moment, because flexible model configuration has not been implemented yet.
+The training API can be used to train a model on any dataset you would like that fits into RAM. Please follow the data formatting requirements in the README file in the `data/` folder. You can find the training script at `src/actions/train.py`. The global configuration for the training API is determined by the `config/train_config.yaml` file, but please do not edit any of the `diffusion` or `model` fields in the config at this moment, because flexible model configuration has not been implemented yet.
 
 The training API is accessible as a command line utility with the following usage:
 
 ```
-usage: train.py [-h] --dataset DATASET --save_folder SAVE_FOLDER [--device DEVICE] [--compression COMPRESSION]
+usage: python -m src.actions.train [-h] --dataset DATASET --save_folder SAVE_FOLDER [--device DEVICE] [--compression COMPRESSION]
                 [--feature_retention_strategy {pca components,pca loadings,moments}] [--history_block_size {1,2,4,8,16,32,64,128,256}]
                 [--model_param_proportion MODEL_PARAM_PROPORTION] [--history_to_feature_ratio HISTORY_TO_FEATURE_RATIO] [--window_length WINDOW_LENGTH]
                 [--data_dayfirst]
@@ -63,3 +69,7 @@ options:
                         The time dimension of the training window
   --data_dayfirst       Whether your data csv has the day as the first element in the date string
 ```
+
+### Acknowledgements
+
+This repository builds on [CSDI](https://github.com/ermongroup/CSDI).
