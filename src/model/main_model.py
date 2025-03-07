@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from src.model.diff_models import diff_CSDI
+from src.model.diff_model import diff_CSDI
 torch.set_printoptions(sci_mode=False)
 
 
@@ -12,8 +12,6 @@ class CSDI(nn.Module):
 
         # number of features in the dataset
         self.dataset_dim = dataset_dim
-
-        self.training_feature_sample_size = config["model"]["training_feature_sample_size"]
 
         self.emb_time_dim = config["model"]["timeemb"]
         self.emb_feature_dim = config["model"]["featureemb"]
@@ -45,7 +43,7 @@ class CSDI(nn.Module):
         self.alpha_torch = torch.tensor(self.alpha).float().to(self.device).unsqueeze(1).unsqueeze(1)
 
 
-    def process_data(self, observed_data, presence_mask, feature_id=None):
+    def process_data(self, observed_data, presence_mask, feature_id):
 
         B, L, K = observed_data.shape
 
@@ -56,10 +54,7 @@ class CSDI(nn.Module):
         presence_mask = presence_mask.permute(0, 2, 1)
 
         observed_tp = torch.arange(L).expand(B, -1).to(self.device) * 1.0
-        if feature_id is None:
-            feature_id=torch.arange(K).unsqueeze(0).expand(B,-1).to(self.device)
-        else:
-            feature_id = feature_id.to(self.device)
+        feature_id = feature_id.to(self.device)
         
         return (
             observed_data,
@@ -67,25 +62,6 @@ class CSDI(nn.Module):
             observed_tp,
             feature_id, 
         )
-
-
-    def sample_features(self, observed_data, presence_mask, feature_id):
-        size = self.training_feature_sample_size
-        extracted_data = []
-        extracted_presence_mask = []
-        extracted_feature_id = []
-
-        for b in range(len(observed_data)):
-            ind = np.random.choice(self.dataset_dim, self.dataset_dim, replace=False) # random permutation
-            extracted_data.append(observed_data[b,ind[:size]])
-            extracted_presence_mask.append(presence_mask[b,ind[:size]])   
-            extracted_feature_id.append(feature_id[b,ind[:size]])
-        
-        extracted_data = torch.stack(extracted_data,0)
-        extracted_presence_mask = torch.stack(extracted_presence_mask,0)
-        extracted_feature_id = torch.stack(extracted_feature_id,0)
-        return extracted_data, extracted_presence_mask, extracted_feature_id
-
 
     def time_embedding(self, pos, d_model=128):
         pe = torch.zeros(pos.shape[0], pos.shape[1], d_model).to(self.device)
@@ -98,19 +74,13 @@ class CSDI(nn.Module):
         return pe
 
 
-    def get_side_info(self, observed_tp, presence_mask, feature_id=None):
+    def get_side_info(self, observed_tp, presence_mask, feature_id):
         B, K, L = presence_mask.shape
 
         time_embed = self.time_embedding(observed_tp, self.emb_time_dim)  # (B,L,emb)
         time_embed = time_embed.unsqueeze(2).expand(-1, -1, K, -1) # (B,L,K,emb)
 
-        if feature_id is not None:
-            feature_embed = self.embed_layer(feature_id).unsqueeze(1).expand(-1,L,-1,-1)
-        else:
-            feature_embed = self.embed_layer(
-                torch.arange(K).to(self.device)
-            )  # (K,emb)
-            feature_embed = feature_embed.unsqueeze(0).unsqueeze(0).expand(B,L,-1,-1)
+        feature_embed = self.embed_layer(feature_id).unsqueeze(1).expand(-1,L,-1,-1)
             
         side_info = torch.cat([time_embed, feature_embed], dim=-1)  # (B,L,K,*)
         side_info = side_info.permute(0, 3, 2, 1)  # (B,*,K,L)
@@ -198,18 +168,13 @@ class CSDI(nn.Module):
         return imputed_samples
 
 
-    def forward(self, observed_data, presence_mask, is_train=1):
+    def forward(self, observed_data, presence_mask, feature_id, is_train=1):
         (
             observed_data, # [B, K, L]
             presence_mask, # [B, K, L]            
             observed_tp, # [B, L]
             feature_id, # [B, K]
-        ) = self.process_data(observed_data, presence_mask)
-        
-        if is_train == 1 and (self.dataset_dim > self.training_feature_sample_size):
-            observed_data, presence_mask, feature_id = self.sample_features(observed_data, presence_mask, feature_id)
-        else:
-            feature_id = None
+        ) = self.process_data(observed_data, presence_mask, feature_id)
         
         side_info = self.get_side_info(observed_tp, presence_mask, feature_id)
 

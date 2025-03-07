@@ -7,7 +7,7 @@ from sklearn.decomposition import PCA
 import os
 import math
 
-from src.utils.utils import data_csv_to_pkl
+from src.utils.utils import data_csv_to_pkl, gen_mask
 
 class ConditionalDataset(Dataset):
     def __init__(
@@ -21,6 +21,7 @@ class ConditionalDataset(Dataset):
         model_param_proportion,
         history_to_feature_ratio,
         window_length,
+        training_feature_sample_size,
         data_dayfirst = False,
         train = True,
     ):
@@ -33,6 +34,8 @@ class ConditionalDataset(Dataset):
         self.model_param_proportion = model_param_proportion
         self.history_to_feature_ratio = history_to_feature_ratio
         self.window_length = window_length
+        self.training_feature_sample_size = training_feature_sample_size
+        self.train = train
 
         if not os.path.exists(f'data/{dataset}/data.pkl'):
             data_csv_to_pkl(f"data/{dataset}.csv", f"data/{dataset}", dayfirst=data_dayfirst)
@@ -58,35 +61,30 @@ class ConditionalDataset(Dataset):
         # sets number of history slices and features retained
         self._calc_slice_counts(exp_point_compression)
 
-        # finding history slices idx
-        n_history_blocks = self.n_history_slices // self.history_block_size
-        block_offset = math.ceil(T / n_history_blocks)
-        self.history_slice_idx = []
-        for i in range(0, T, block_offset):
-            self.history_slice_idx += [i + j for j in range(self.history_block_size) if i + j < T]
-        remaining_slices = self.n_history_slices - len(self.history_slice_idx)
+        # finding gap sizes
+        n_gap_slices = T - self.n_history_slices
+        n_gaps = self.n_history_slices // self.history_block_size
+        history_block_gap = math.ceil(n_gap_slices / n_gaps)
 
-        for i in range(0, remaining_slices):
-            self.history_slice_idx.append(i*block_offset + self.history_block_size)
 
         # finding features retained idx
         if self.feature_retention_strategy == 'pca loadings':
-            self.feature_idx = pca_loading_selection(self.main_data, self.n_feature_slices)
+            # reverse order
+            self.condit_feature_idx = pca_loading_selection(self.main_data, self.n_feature_slices)[::-1]
         else:
             raise NotImplementedError
             
-        # construct the mask
-        mask_data = np.zeros_like(self.main_data)
-        mask_data[self.history_slice_idx] = 1
-        mask_data[:, self.feature_idx] = 1
-        self.mask_data = mask_data
-
-        with open(f"{save_folder}/presence_mask.pkl", 'wb') as f:
-            pickle.dump(self.mask_data, f)
+        mask_metadata = {
+            'condit_feature_idx': self.condit_feature_idx, 
+            'history_block_size': self.history_block_size,
+            'history_block_gap': history_block_gap}
+        with open(f"{save_folder}/presence_mask_metadata.yaml", 'w') as f:
+            # conditional features stored in decreasing order of importance according to PCA
+            yaml.dump(mask_metadata, f)
 
         total_length = len(self.main_data)
         
-        if train:
+        if self.train:
             all_index = list(range(total_length-self.window_length))     
             self.use_index = all_index
         else:
@@ -95,14 +93,38 @@ class ConditionalDataset(Dataset):
 
 
     def __getitem__(self, orgindex):
-        index = self.use_index[orgindex]
 
-        s = {
-            'observed_data': self.main_data[index:index+self.window_length],
-            'presence_mask': self.mask_data[index:index+self.window_length],
-            'timepoints': np.arange(self.window_length, dtype=np.int32), 
-            'feature_id': np.arange(self.main_data.shape[1], dtype=np.int32), 
-        }
+        t_index = self.use_index[orgindex]
+
+        if self.train and self.main_data.shape[1] > self.training_feature_sample_size:
+            # sample features
+            rand_feature_idxs = np.random.choice(self.main_data.shape[1], self.training_feature_sample_size, replace=False)
+            s = {
+                'observed_data': self.main_data[t_index:t_index+self.window_length][:, rand_feature_idxs], # will be db query in future
+                'presence_mask': gen_mask(
+                    features_in_window = rand_feature_idxs,
+                    start_idx = t_index,
+                    end_idx = t_index+self.window_length,
+                    save_folder = self.save_folder
+                    ),
+                'timepoints': np.arange(self.window_length, dtype=np.int32), 
+                'feature_id': rand_feature_idxs, 
+            }
+        else:
+            # all features
+            s = {
+                'observed_data': self.main_data[t_index:t_index+self.window_length], # will be db query in future
+                'presence_mask': gen_mask(
+                    features_in_window = np.arange(self.main_data.shape[1]),
+                    start_idx = t_index,
+                    end_idx = t_index+self.window_length,
+                    save_folder = self.save_folder
+                    ),
+                'timepoints': np.arange(self.window_length, dtype=np.int32), 
+                'feature_id': np.arange(self.main_data.shape[1], dtype=np.int32), 
+            }
+            print(s['presence_mask'].sum(), flush=True)
+
         return s
     
 
@@ -139,6 +161,7 @@ def get_dataloader(
     model_param_proportion,
     history_to_feature_ratio,
     window_length,
+    training_feature_sample_size,
     data_dayfirst = False,
     ):
 
@@ -152,6 +175,7 @@ def get_dataloader(
         model_param_proportion = model_param_proportion,
         history_to_feature_ratio = history_to_feature_ratio,
         window_length = window_length,
+        training_feature_sample_size = training_feature_sample_size,
         data_dayfirst = data_dayfirst,
         )
     
@@ -165,6 +189,7 @@ def get_dataloader(
         model_param_proportion = model_param_proportion,
         history_to_feature_ratio = history_to_feature_ratio,
         window_length = window_length,
+        training_feature_sample_size = training_feature_sample_size,
         data_dayfirst = data_dayfirst,
         train = False,
         )
@@ -189,7 +214,5 @@ def pca_loading_selection(data, n_features):
     print('\n$$$ PCA $$$\n')
     pca = PCA(n_components=1)
     pca.fit(data)
-    pca_sorted_features = np.argsort(np.abs(pca.components_))
-    return list(pca_sorted_features[0, -n_features:])
-
-
+    pca_sorted_features = np.argsort(np.abs(pca.components_))[0].tolist()
+    return pca_sorted_features[-n_features:]

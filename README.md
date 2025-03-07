@@ -14,22 +14,24 @@ You can use the `src/actions/query.py` script to query a model for regenerations
 The query API can be accessed as a function (docs are in the function header) called from another script, or by the following command line utility:
 
 ```
-usage: python -m src.actions.query [-h] --variables VARIABLES --start START --end END --freq FREQ [--n_generations N_GENERATIONS]
-                [--generation_variance GENERATION_VARIANCE]
+usage: python -m src.actions.query [-h] --variables VARIABLES [VARIABLES ...] --start START --end END --freq FREQ [--n_generations N_GENERATIONS]
+                [--generation_variance GENERATION_VARIANCE] [--n_context_features N_CONTEXT_FEATURES]
 
 Query a model for regenerated data
 
 options:
   -h, --help            show this help message and exit
-  --variables VARIABLES
+  --variables VARIABLES [VARIABLES ...]
                         Variables to query the model for
-  --start START         Start date for the query, please use format YYYY-MM-DDTHH:MM:SS, where the character T is a literal
-  --end END             End date for the query, please use format YYYY-MM-DDTHH:MM:SS, where the character T is a literal
+  --start START         Start date for the query, please use format YYYY-MM-DD HH:MM:SS
+  --end END             End date for the query, please use format YYYY-MM-DD HH:MM:SS
   --freq FREQ           Frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1H for hourly data
   --n_generations N_GENERATIONS
                         Number of samples to generate for each data point
   --generation_variance GENERATION_VARIANCE
                         Variance of the generated data
+  --n_context_features N_CONTEXT_FEATURES
+                        Number of extra conditional features to include in the pass through the model
 ```
 
 ### How to Use the Training API

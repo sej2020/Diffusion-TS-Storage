@@ -1,5 +1,5 @@
 # For setting paths to model and data and specifying the device
 
 model_folder: "example_model/"
-data_folder: "data/weather/"
+data_folder: "data/electricity/"
 device: "cuda:1"

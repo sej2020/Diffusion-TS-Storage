@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from src.model.diff_models import diff_CSDI
+from src.model.diff_model import diff_CSDI
 torch.set_printoptions(sci_mode=False)
 
 

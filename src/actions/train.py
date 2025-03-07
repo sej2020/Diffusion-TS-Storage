@@ -72,7 +72,14 @@ parser.add_argument(
 
 args = parser.parse_args()
 
+
 os.makedirs(args.save_folder, exist_ok=True)
+with open('config/train_config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+with open(f'{args.save_folder}/config.yaml', 'w') as f:
+    yaml.dump(args.__dict__, f)
+    yaml.dump(config, f)
+
 train_loader, eval_loader, scaler, mean_scaler \
     = get_dataloader(
     dataset = args.dataset,
@@ -84,15 +91,9 @@ train_loader, eval_loader, scaler, mean_scaler \
     model_param_proportion = args.model_param_proportion,
     history_to_feature_ratio = args.history_to_feature_ratio,
     window_length = args.window_length,
+    training_feature_sample_size = config['model']['training_feature_sample_size'],
     data_dayfirst = args.data_dayfirst
     )
-
-with open('config/train_config.yaml', 'r') as f:
-    config = yaml.safe_load(f)
-
-with open(f'{args.save_folder}/config.yaml', 'w') as f:
-    yaml.dump(args.__dict__, f)
-    yaml.dump(config, f)
 
 model = CSDI(config, train_loader.dataset.main_data.shape[1], args.device).to(args.device)
 train(model, config['train'], train_loader, args.save_folder)

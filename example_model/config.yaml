@@ -1,0 +1,28 @@
+compression: 0.5
+data_dayfirst: false
+dataset: electricity
+device: cuda:1
+feature_retention_strategy: pca loadings
+history_block_size: 2
+history_to_feature_ratio: 1.0
+model_param_proportion: 0.5
+save_folder: test_feat_rand_3
+window_length: 168
+diffusion:
+  beta_end: 0.5
+  beta_start: 0.0001
+  channels: 64
+  diffusion_embedding_dim: 128
+  is_linear: true
+  layers: 4
+  nheads: 8
+  num_steps: 50
+  schedule: quad
+model:
+  featureemb: 16
+  timeemb: 128
+  training_feature_sample_size: 64
+train:
+  batch_size: 16
+  epochs: 1000
+  lr: 0.001

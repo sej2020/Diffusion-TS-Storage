@@ -4,8 +4,55 @@ import numpy as np
 import torch
 from torch.optim import Adam
 from tqdm import tqdm
-import pickle
 import os
+import yaml
+
+def gen_mask(features_in_window: np.ndarray, start_idx: int, end_idx: int, save_folder: str) -> np.ndarray:
+    """
+    Generates a mask for the presence of conditional data in a window. The mask is a binary matrix where 1s represent the presence of data
+    and 0s represent the absence of data. The mask is generated based on the retained features, and the repeating history pattern.
+
+    Args:
+        features_in_window (np.ndarray): the indices of the features in the window
+        start_idx (int): the start index of the window
+        end_idx (int): the end index of the window
+        save_folder (str): the folder where the mask metadata is saved
+
+    Returns:
+        mask (np.ndarray): the mask for the presence of conditional data in the window
+    """
+    T = end_idx - start_idx
+    N = len(features_in_window)
+    mask = np.zeros((T, N))
+
+    with open(f"{save_folder}/presence_mask_metadata.yaml", 'r') as f:
+        mask_metadata = yaml.safe_load(f)
+    condit_feature_idx = mask_metadata['condit_feature_idx']
+    history_block_size = mask_metadata['history_block_size']
+    history_block_gap = mask_metadata['history_block_gap']
+
+    # mask is 1 if the feature is in the conditional feature set
+    condit_feature_set = set(condit_feature_idx)
+    for feat_idx, feat in enumerate(features_in_window):
+        if feat in condit_feature_set:
+            mask[:, feat_idx] = 1
+    
+
+    # block and gap pattern
+    pattern = np.array([1] * history_block_size + [0] * history_block_gap)
+    pattern = np.tile(pattern, T // (history_block_size + history_block_gap) + 2)
+    
+    # where in block and gap pattern window starts
+    start_in_pattern = start_idx % (history_block_size + history_block_gap)
+    pattern_slice = pattern[start_in_pattern:start_in_pattern+T]
+    
+    # where there are blocks in the window, make the mask 1
+    pattern_1_idx = np.where(pattern_slice == 1)[0]
+    mask[pattern_1_idx, :] = 1
+    
+    return mask
+
+
 
 def data_csv_to_pkl(dataset_path: str, save_folder: str, dayfirst: bool = False) -> None:
     """
@@ -68,9 +115,10 @@ def train(model, config, train_loader, save_folder):
             for batch_num, train_batch in enumerate(it, start=1):
                 observed_data = train_batch['observed_data']
                 presence_mask = train_batch['presence_mask']
+                feature_id = train_batch['feature_id']
                 optimizer.zero_grad()
 
-                loss = model(observed_data, presence_mask, is_train=1)
+                loss = model(observed_data, presence_mask, feature_id, is_train=1)
                 loss.backward()
                 avg_loss += loss.item()
                 optimizer.step()

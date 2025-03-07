@@ -9,6 +9,7 @@ from src.model.main_model import CSDI
 import torch
 import pickle
 import numpy as np
+from src.utils.utils import gen_mask
 
 
 def query(
@@ -17,7 +18,8 @@ def query(
     end: datetime.datetime, 
     frequency: str,
     n_generations: int = 1,
-    generation_variance: float = 1
+    generation_variance: float = 1,
+    n_context_features: int = 4
     ) -> np.ndarray:
     """
     Query a model for regenerated data. If you want to change the model or device, you will need to change the query_config.yaml file.
@@ -29,6 +31,8 @@ def query(
         frequency (str): time frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1H for hourly data
         n_generations (int): number of samples to generate for each data point
         generation_variance (float): variance of the generated data
+        n_context_features (int): number of extra conditional features to include in the pass through the model. More features can help the model generate more accurate data,
+            but can slow down the query
 
     Returns:
         out (np.ndarray): the regenerated data, with shape [_num_samples_, _time_, _num_variables_]
@@ -44,32 +48,42 @@ def query(
     DEVICE = global_config["device"] if torch.cuda.is_available() else "cpu"
     
     # Getting the conditional data for the model
-    # Note: as of right now, this will be full data and the prediction mask
+    # TEMPORARY - WILL BE GONE SOON
     with open(data_folder / 'data.pkl', 'rb') as f:
-        # full data now, but in the future this will load just conditional data
         data = pickle.load(f)
-    with open(model_folder / 'presence_mask.pkl', 'rb') as f:
-        # mask to make full data just conditional data. unclear if this will be necessary in the future
-        presence_mask = pickle.load(f)
+    
+    with open(model_folder / 'presence_mask_metadata.yaml', 'r') as f:
+        mask_metadata = yaml.safe_load(f)
     with open(data_folder / 'labels.pkl', 'rb') as f:
         # two dictionaries: {'YYYY-MM-DD HH:MM:SS': int} and {str: int}
+        # this sucks rn and should be fixed when we have DB query infrastructure
         (time_stamps, var_names) = pickle.load(f)
     with open(data_folder / 'meanstd.pkl', 'rb') as f:
         (means, stds) = pickle.load(f)
     
-    # Getting the window: for now, the window size is only that of the query
-    # in the future, we will expand the size of the window based on experiments about how much conditional data is most useful
-    var_slice = [var_names[v] for v in variables]
+    # nomenclature: variables == features
+    query_feature_idx = [var_names[v] for v in variables]
     start_idx = time_stamps[start]
     end_idx = time_stamps[end]
-    data_slice = data[start_idx:end_idx, var_slice]
-    presence_mask_slice = presence_mask[start_idx:end_idx, var_slice]
+
+    # will have db query here in the future.
+    presence_mask_slice, all_query_vars = make_query_window(
+        mask_metadata = mask_metadata,
+        features_in_query = query_feature_idx,
+        start_idx = start_idx,
+        end_idx = end_idx,
+        n_context_features = n_context_features,
+        model_folder = model_folder
+        )
+
+    # TEMPORARY - WILL BE IN make_query_window
+    data_slice = data[start_idx:end_idx, all_query_vars]
 
     # normalizing the data
-    data_slice = (data_slice - means[var_slice]) / (stds[var_slice] + 1e-9)
+    data_slice = (data_slice - means[all_query_vars]) / (stds[all_query_vars] + 1e-9)
 
     # Initializing the model
-    with open(model_folder / "config.json", "r") as f:
+    with open(model_folder / "config.yaml", "r") as f:
         model_config = yaml.safe_load(f)
     model = CSDI(model_config, dataset_dim=data.shape[1], device=DEVICE).to(DEVICE)
     model.load_state_dict(torch.load(model_folder / "model.pth", weights_only=True))
@@ -77,26 +91,69 @@ def query(
     # model assumes batched torch tensors and will put on device for us
     data_slice = torch.tensor(data_slice).unsqueeze(0)
     presence_mask_slice = torch.tensor(presence_mask_slice).unsqueeze(0)
-    var_slice = torch.tensor(var_slice).unsqueeze(0)
+    all_query_vars = torch.tensor(all_query_vars).unsqueeze(0)
 
     # querying the model
-    samples = model.generate(data_slice, presence_mask_slice, var_slice, n_generations, generation_variance) 
+    samples = model.generate(data_slice, presence_mask_slice, all_query_vars, n_generations, generation_variance) 
 
     # denormalizing the data
-    samples = samples.cpu().numpy() * (stds[var_slice] + 1e-9) + means[var_slice]
+    samples = samples.cpu().numpy() * (stds[all_query_vars] + 1e-9) + means[all_query_vars]
 
     # of size [num_samples, L, K]
     return samples
 
 
+def make_query_window(
+    mask_metadata: dict,
+    features_in_query: list,
+    start_idx: int,
+    end_idx: int,
+    n_context_features: int,
+    model_folder: pathlib.Path,
+    ) -> tuple:
+    """
+    Creates a window of the mask for the presence of conditional data in the window given the query variables and the desired context size.
+
+    Args:
+        mask_metadata (dict): metadata about the presence mask
+        features_in_query (list): the variables indices in the query
+        start_idx (int): the start index of the window
+        end_idx (int): the end index of the window
+        n_context_features (int): the number of extra context features to include in the window
+        model_folder (pathlib.Path): the folder where the model and presence mask metadata is saved
+
+    Returns:
+        presence_mask (np.ndarray): the presence mask for the window
+        features_in_window (list): the variables indices in the window
+    """
+    if n_context_features > 0:
+        extra_features_idx = []
+        # getting top conditional features that are not in the query
+        for condit_feat in mask_metadata['condit_feature_idx']:
+            if condit_feat not in features_in_query:
+                extra_features_idx.append(condit_feat)
+            if len(extra_features_idx) == n_context_features:
+                break
+        features_in_window = features_in_query + extra_features_idx
+    else:
+        features_in_window = features_in_query
+    
+    # corner case: not enough conditional features to add extra context features
+    if len(features_in_window) < len(features_in_query) + n_context_features:
+        print(f"Warning: not enough conditional features to add extra context features. This query will only have {len(features_in_window) - len(features_in_query)} extra context features.")
+
+    presence_mask = gen_mask(features_in_window, start_idx, end_idx, str(model_folder))
+
+    # will not ouput features_in_window in the future, but will output data from db query
+    return presence_mask, features_in_window
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Query a model for regenerated data")
-    def list_of_vars(string):
-        return [var.strip() for var in string.split(",")]
 
     # Required
-    parser.add_argument("--variables", type=list_of_vars, required=True, help="Variables to query the model for")
+    parser.add_argument("--variables", nargs='+', type=str, required=True, help="Variables to query the model for")
     parser.add_argument("--start", type=str, required=True, help="Start date for the query, please use format YYYY-MM-DD HH:MM:SS")
     parser.add_argument("--end", type=str, required=True, help="End date for the query, please use format YYYY-MM-DD HH:MM:SS")
     parser.add_argument("--freq", type=str, required=True, 
@@ -108,6 +165,7 @@ if __name__ == '__main__':
     parser.add_argument("--n_generations", type=int, default=1, help="Number of samples to generate for each data point")
     # Note: need to confirm that this is what tuning the noise parameter in model.impute actually does 
     parser.add_argument("--generation_variance", type=float, default=1, help="Variance of the generated data")
+    parser.add_argument("--n_context_features", type=int, default=4, help="Number of extra conditional features to include in the pass through the model")
 
     args = parser.parse_args()
     print(
@@ -117,6 +175,7 @@ if __name__ == '__main__':
         args.end,
         args.freq,
         args.n_generations,
-        args.generation_variance
+        args.generation_variance,
+        args.n_context_features
         )
     )
