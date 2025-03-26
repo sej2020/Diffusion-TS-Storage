@@ -5,7 +5,7 @@
 
 Storage and analysis of time series data forms the foundation of IoT, edge computing, and personalized AI. In this paper, we present the design and architecture of a system for effectively using generative models for reducing the carbon footprint associated with time series data storage and processing. We utilize a score-based diffusion model for conditional time series generation that can replace conventional dataset storage at a fraction of the environmental impact. We intend integrate the model with a time-series database and provide low-friction interfaces for training and querying the model.
 
-This project is under development and can currently only support the compression of datasets that fit into RAM.
+*This project is under development and can currently only support the compression of datasets that fit into RAM.*
 
 ### How to Use the Query API
 
@@ -15,7 +15,7 @@ The query API can be accessed as a function (docs are in the function header) ca
 
 ```
 usage: python -m src.actions.query [-h] --variables VARIABLES [VARIABLES ...] --start START --end END --freq FREQ [--n_generations N_GENERATIONS]
-                [--generation_variance GENERATION_VARIANCE] [--n_context_features N_CONTEXT_FEATURES]
+                [--gen_noise_magnitude GEN_NOISE_MAGNITUDE] [--n_context_features N_CONTEXT_FEATURES]
 
 Query a model for regenerated data
 
@@ -28,8 +28,8 @@ options:
   --freq FREQ           Frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1H for hourly data
   --n_generations N_GENERATIONS
                         Number of samples to generate for each data point
-  --generation_variance GENERATION_VARIANCE
-                        Variance of the generated data
+  --gen_noise_magnitude GEN_NOISE_MAGNITUDE
+                        Spread parameter for generations. 0.0 will produce a deterministic output, 1.0 will match the model's learned distribution
   --n_context_features N_CONTEXT_FEATURES
                         Number of extra conditional features to include in the pass through the model
 ```
@@ -46,7 +46,7 @@ usage: python -m src.actions.train [-h] --dataset DATASET --save_folder SAVE_FOL
                 [--model_param_proportion MODEL_PARAM_PROPORTION] [--history_to_feature_ratio HISTORY_TO_FEATURE_RATIO] [--window_length WINDOW_LENGTH]
                 [--data_dayfirst]
 
-Searching for the best parameters for compressing datasets
+Training a model
 
 options:
   -h, --help            show this help message and exit
@@ -63,7 +63,7 @@ options:
                         data points that are preserved
   --model_param_proportion MODEL_PARAM_PROPORTION
                         To compress the data, some of the info will be preserved as model weights, while some of the info will be conditional data. This is the
-                        proportion of the retained info that will persist as model parameters (thereby determining model size) vs. conditional data. E.g. 0.5
+                        proportion of the retained info that will persist as model parameters (thereby determining model size) vs. conditional data. E.g. 1/2
                         means that half of the memory dedicated to this compressed data will be model weights, while half will be real data.
   --history_to_feature_ratio HISTORY_TO_FEATURE_RATIO
                         The ratio of preserved points in the data coming from time slices (historical data) vs features
