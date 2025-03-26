@@ -1,8 +1,3 @@
-"""
-Notes:
-- we need to add data type to config that gets stored with the model
-"""
-
 import argparse
 from src.utils.data import get_dataloader
 import os
@@ -10,7 +5,7 @@ import yaml
 from src.utils.utils import train, evaluate
 from src.model.main_model import CSDI
 
-parser = argparse.ArgumentParser(description="Searching for the best parameters for compressing datasets")
+parser = argparse.ArgumentParser(description="Training a model")
 
 def fraction_to_float(fraction: str) -> float:
     frac = fraction.split("/")
@@ -37,7 +32,7 @@ parser.add_argument(
 
 # hyperparameters
 parser.add_argument(
-    "--feature_retention_strategy", choices=["pca components", "pca loadings", "moments"], default="pca loadings", 
+    "--feature_retention_strategy", choices=["pca loadings"], default="pca loadings", 
     help="The strategy for selecting features to retain as conditional data"
     )
 parser.add_argument(
@@ -48,11 +43,11 @@ parser.add_argument(
     """
     )
 parser.add_argument(
-    "--model_param_proportion", type=float, default=0.5,
+    "--model_param_proportion", type=fraction_to_float, default=1/2,
     help="""
     To compress the data, some of the info will be preserved as model weights, while some of the info will be conditional data.
     This is the proportion of the retained info that will persist as model parameters (thereby determining model size) vs. conditional data.
-    E.g. 0.5 means that half of the memory dedicated to this compressed data will be model weights, while half will be real data.
+    E.g. 1/2 means that half of the memory dedicated to this compressed data will be model weights, while half will be real data.
     """
     )
 parser.add_argument(

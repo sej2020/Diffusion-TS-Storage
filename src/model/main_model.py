@@ -134,7 +134,7 @@ class CSDI(nn.Module):
         return total_input
 
 
-    def impute(self, observed_data, presence_mask, side_info, n_samples, generation_variance=1):
+    def impute(self, observed_data, presence_mask, side_info, n_samples, gen_noise_magnitude=1):
         B, K, L = observed_data.shape
 
         if B == 1: # B will be 1 all of the time I think
@@ -158,13 +158,14 @@ class CSDI(nn.Module):
             current_sample = coeff1 * (current_sample - coeff2 * predicted)
 
             if t > 0:
-                noise = torch.randn_like(current_sample) * generation_variance
+                noise = torch.randn_like(current_sample) * gen_noise_magnitude
                 sigma = (
                     (1.0 - self.alpha[t - 1]) / (1.0 - self.alpha[t]) * self.beta[t]
                 ) ** 0.5
                 current_sample += sigma * noise
 
         imputed_samples = current_sample * (1 - presence_mask) + observed_data * presence_mask
+
         return imputed_samples
 
 
@@ -183,7 +184,7 @@ class CSDI(nn.Module):
         return loss_func(observed_data, presence_mask, side_info, is_train)
 
 
-    def generate(self, observed_data, presence_mask, feature_id, n_samples=1, generation_variance=1):
+    def generate(self, observed_data, presence_mask, feature_id, n_samples=1, gen_noise_magnitude=1):
         (
             observed_data, # [B, K, L]
             presence_mask, # [B, K, L]
@@ -193,6 +194,6 @@ class CSDI(nn.Module):
 
         with torch.no_grad():
             side_info = self.get_side_info(observed_tp, presence_mask, feature_id)
-            samples = self.impute(observed_data, presence_mask, side_info, n_samples, generation_variance)
+            samples = self.impute(observed_data, presence_mask, side_info, n_samples, gen_noise_magnitude)
         
         return samples.permute(0, 2, 1) # [n_samples, L, K]

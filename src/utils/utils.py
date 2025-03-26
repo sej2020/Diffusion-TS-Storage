@@ -69,31 +69,40 @@ def data_csv_to_pkl(dataset_path: str, save_folder: str, dayfirst: bool = False)
     """
     data_df = pd.read_csv(dataset_path, encoding='unicode-escape', index_col=0)
     
-    cols = data_df.columns.to_list()
-    time_indices = pd.to_datetime(data_df.index, dayfirst=dayfirst)
-    time_labels = [str(time) for time in time_indices]
-
-    var_dict = {var: i for i, var in enumerate(cols)}
-    time_dict = {time: i for i, time in enumerate(time_labels)}
-
-    os.makedirs(save_folder, exist_ok=True)
-    with open(f"{save_folder}/labels.pkl", 'wb') as f:
-        pickle.dump((time_dict, var_dict), f)
-
+    # mean and std
     mean_df = data_df.mean()
     std_df = data_df.std()
     mean = mean_df.values.astype('float32')
     std = std_df.values.astype('float32')
     mean_and_std = (mean, std)
+    with open(f'{save_folder}/meanstd.pkl', 'wb') as f:
+        pickle.dump(mean_and_std, f)
 
+    # interpolate missing values
     data_df = data_df.interpolate(method='linear', limit_direction='both', axis=0)
+    
+    # time and var dicts
+    cols = data_df.columns.to_list()
+    time_indices = pd.to_datetime(data_df.index, dayfirst=dayfirst)
+    time_diffs = time_indices[1:] - time_indices[:-1]
+    time_diff = time_diffs.value_counts().idxmax().total_seconds()
+
+    start_time = time_indices[0].timestamp()
+
+    var_dict = {var: i for i, var in enumerate(cols)}
+    time_dict = {'start': start_time, 'interval': time_diff}
+
+    os.makedirs(save_folder, exist_ok=True)
+    with open(f"{save_folder}/labels.pkl", 'wb') as f:
+        pickle.dump((time_dict, var_dict), f)
+    
+    # save data
     data = data_df.values
     data = data.astype('float32')
 
     with open(f'{save_folder}/data.pkl', 'wb') as f:
         pickle.dump(data, f)
-    with open(f'{save_folder}/meanstd.pkl', 'wb') as f:
-        pickle.dump(mean_and_std, f)
+
 
 
 
@@ -157,7 +166,7 @@ def evaluate(model, test_loader, scaler, save_folder):
                 feature_id = test_batch['feature_id'] # [1, K]
 
                 # [1, L, K]
-                samples = model.generate(observed_data, presence_mask, feature_id, generation_variance=0)
+                samples = model.generate(observed_data, presence_mask, feature_id, gen_noise_magnitude=0)
 
                 target_mask = 1 - presence_mask # [1, L, K]
                 target = observed_data # [1, L, K]
@@ -189,12 +198,16 @@ def evaluate(model, test_loader, scaler, save_folder):
                     refresh=True,
                 )
 
-        with open(f"{save_folder}/result.txt", "w") as f:
-            f.write("RMSE: " + str(np.sqrt(mse_total / evalpoints_total)) + "\n")
-            f.write("MAE: " + str(mae_total / evalpoints_total) + "\n")
-            f.write("Normalized RMSE: " + str(np.sqrt(normalized_mse_total / evalpoints_total)) + "\n")
-            f.write("Normalized MAE: " + str(normalized_mae_total / evalpoints_total) + "\n")
-            print("RMSE:", np.sqrt(mse_total / evalpoints_total))
-            print("MAE:", mae_total / evalpoints_total)
-            print("Normalized RMSE:", np.sqrt(normalized_mse_total / evalpoints_total))
-            print("Normalized MAE:", normalized_mae_total / evalpoints_total)
+    # reporting metrics
+    RMSE = np.sqrt(mse_total / evalpoints_total)
+    MAE = mae_total / evalpoints_total
+    NRMSE = np.sqrt(normalized_mse_total / evalpoints_total)
+    NMAE = normalized_mae_total / evalpoints_total
+
+    print("RMSE:", RMSE)
+    print("MAE:", MAE)
+    print("Normalized RMSE:", NRMSE)
+    print("Normalized MAE:", NMAE)
+
+    with open(f"{save_folder}/result.yaml", "w") as f:
+        yaml.dump({"RMSE": RMSE, "MAE": MAE, "Normalized RMSE": NRMSE, "Normalized MAE": NMAE}, f)

@@ -123,7 +123,6 @@ class ConditionalDataset(Dataset):
                 'timepoints': np.arange(self.window_length, dtype=np.int32), 
                 'feature_id': np.arange(self.main_data.shape[1], dtype=np.int32), 
             }
-            print(s['presence_mask'].sum(), flush=True)
 
         return s
     

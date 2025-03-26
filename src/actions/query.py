@@ -18,8 +18,9 @@ def query(
     end: datetime.datetime, 
     frequency: str,
     n_generations: int = 1,
-    generation_variance: float = 1,
-    n_context_features: int = 4
+    gen_noise_magnitude: float = 1,
+    n_context_features: int = 4,
+    testing: bool = False
     ) -> np.ndarray:
     """
     Query a model for regenerated data. If you want to change the model or device, you will need to change the query_config.yaml file.
@@ -30,9 +31,10 @@ def query(
         end (datetime.datetime): end date for the query
         frequency (str): time frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1H for hourly data
         n_generations (int): number of samples to generate for each data point
-        generation_variance (float): variance of the generated data
+        gen_noise_magnitude (float): controls the spread of the noise in the denoising step of the model. 0.0 will produce a deterministic output, 1.0 will match the spread of the model's learned distribution
         n_context_features (int): number of extra conditional features to include in the pass through the model. More features can help the model generate more accurate data,
             but can slow down the query
+        testing (bool): if True, the query will also return the data slice and the presence mask slice
 
     Returns:
         out (np.ndarray): the regenerated data, with shape [_num_samples_, _time_, _num_variables_]
@@ -55,16 +57,18 @@ def query(
     with open(model_folder / 'presence_mask_metadata.yaml', 'r') as f:
         mask_metadata = yaml.safe_load(f)
     with open(data_folder / 'labels.pkl', 'rb') as f:
-        # two dictionaries: {'YYYY-MM-DD HH:MM:SS': int} and {str: int}
-        # this sucks rn and should be fixed when we have DB query infrastructure
-        (time_stamps, var_names) = pickle.load(f)
+        # two dictionaries: {'start': int, 'interval': int} and {str: int}
+        (time_meta, var_names) = pickle.load(f)
     with open(data_folder / 'meanstd.pkl', 'rb') as f:
         (means, stds) = pickle.load(f)
     
     # nomenclature: variables == features
     query_feature_idx = [var_names[v] for v in variables]
-    start_idx = time_stamps[start]
-    end_idx = time_stamps[end]
+
+    # getting the start and end indices
+    beginning_of_data = datetime.datetime.fromtimestamp(time_meta['start'])
+    start_idx = int((start - beginning_of_data).total_seconds() / time_meta['interval'])
+    end_idx = int((end - beginning_of_data).total_seconds() / time_meta['interval'])
 
     # will have db query here in the future.
     presence_mask_slice, all_query_vars = make_query_window(
@@ -75,9 +79,8 @@ def query(
         n_context_features = n_context_features,
         model_folder = model_folder
         )
-
     # TEMPORARY - WILL BE IN make_query_window
-    data_slice = data[start_idx:end_idx, all_query_vars]
+    data_slice = data[start_idx:end_idx, all_query_vars]  # first n features are query features, rest are context features
 
     # normalizing the data
     data_slice = (data_slice - means[all_query_vars]) / (stds[all_query_vars] + 1e-9)
@@ -94,13 +97,20 @@ def query(
     all_query_vars = torch.tensor(all_query_vars).unsqueeze(0)
 
     # querying the model
-    samples = model.generate(data_slice, presence_mask_slice, all_query_vars, n_generations, generation_variance) 
+    samples = model.generate(data_slice, presence_mask_slice, all_query_vars, n_generations, gen_noise_magnitude) 
 
     # denormalizing the data
     samples = samples.cpu().numpy() * (stds[all_query_vars] + 1e-9) + means[all_query_vars]
 
-    # of size [num_samples, L, K]
-    return samples
+    # getting just the variables the user asked for
+    query_samples = samples[:, :, :len(query_feature_idx)]
+
+    if testing:
+        denormed_data_slice = data_slice.cpu().numpy() * (stds[all_query_vars] + 1e-9) + means[all_query_vars]
+        denormed_data_slice = denormed_data_slice[:, :, :len(query_feature_idx)]
+        return query_samples, denormed_data_slice, presence_mask_slice.cpu().numpy()[:, :, :len(query_feature_idx)]
+    else:
+        return query_samples # size [n_samples, L, K]
 
 
 def make_query_window(
@@ -164,18 +174,18 @@ if __name__ == '__main__':
     # Not Required
     parser.add_argument("--n_generations", type=int, default=1, help="Number of samples to generate for each data point")
     # Note: need to confirm that this is what tuning the noise parameter in model.impute actually does 
-    parser.add_argument("--generation_variance", type=float, default=1, help="Variance of the generated data")
+    parser.add_argument("--gen_noise_magnitude", type=float, default=1, help="Spread parameter for generations. 0.0 will produce a deterministic output, 1.0 will match the model's learned distribution")
     parser.add_argument("--n_context_features", type=int, default=4, help="Number of extra conditional features to include in the pass through the model")
 
     args = parser.parse_args()
     print(
         query(
         args.variables,
-        args.start,
-        args.end,
+        datetime.datetime.fromisoformat(args.start),
+        datetime.datetime.fromisoformat(args.end),
         args.freq,
         args.n_generations,
-        args.generation_variance,
+        args.gen_noise_magnitude,
         args.n_context_features
         )
     )
