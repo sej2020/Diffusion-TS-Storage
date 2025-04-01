@@ -6,7 +6,17 @@ torch.set_printoptions(sci_mode=False)
 
 
 class CSDI(nn.Module):
-    def __init__(self, config, dataset_dim, device):
+    """
+    Conditional Score-based Diffusion model for Imputation with some modifications for our purpose.
+    - https://arxiv.org/pdf/2107.03502
+    """
+    def __init__(self, config: dict, dataset_dim: int, device: torch.device):
+        """
+        Args:
+            config (dict): configuration dictionary from 'config/train_config.yaml'
+            dataset_dim (int): number of features in the dataset
+            device (torch.device): device to host the model
+        """
         super().__init__()
         self.device = device
 
@@ -43,7 +53,18 @@ class CSDI(nn.Module):
         self.alpha_torch = torch.tensor(self.alpha).float().to(self.device).unsqueeze(1).unsqueeze(1)
 
 
-    def process_data(self, observed_data, presence_mask, feature_id):
+    def process_data(self, observed_data: torch.Tensor, presence_mask: torch.Tensor, feature_id: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Reorders tensor dimensions, converts to float, and moves to device. Also creates the observed time points tensor.
+
+        Args:
+            observed_data (torch.Tensor): data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            feature_id (torch.Tensor): tensor indicating the id of each feature
+
+        Returns:
+            tuple: processed observed data, presence mask, observed time points, and feature id tensors
+        """
 
         B, L, K = observed_data.shape
 
@@ -63,7 +84,19 @@ class CSDI(nn.Module):
             feature_id, 
         )
 
-    def time_embedding(self, pos, d_model=128):
+    
+    def time_embedding(self, pos: torch.Tensor, d_model: int=128) -> torch.Tensor:
+        """
+        Positional encoding for time embedding.
+
+        Args:
+            pos (torch.Tensor): tensor of observed time points
+            d_model (int): time embedding dimension
+
+        Returns:
+            torch.Tensor: positional encoding tensor
+        """
+
         pe = torch.zeros(pos.shape[0], pos.shape[1], d_model).to(self.device)
         position = pos.unsqueeze(2)
         div_term = 1 / torch.pow(
@@ -74,7 +107,20 @@ class CSDI(nn.Module):
         return pe
 
 
-    def get_side_info(self, observed_tp, presence_mask, feature_id):
+    def get_side_info(self, observed_tp: torch.Tensor, presence_mask: torch.Tensor, feature_id: torch.Tensor) -> torch.Tensor:
+        """
+        Gets time and feature embeddings to use as side information for the diffusion model.
+        The time embedding is a positional encoding of the observed time points, and the feature embedding is an embedding of the feature ids.
+        The presence mask is also included in the side information.
+
+        Args:
+            observed_tp (torch.Tensor): tensor of observed time points
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            feature_id (torch.Tensor): tensor indicating the id of each feature
+
+        Returns:
+            torch.Tensor: concatenated side information tensor
+        """
         B, K, L = presence_mask.shape
 
         time_embed = self.time_embedding(observed_tp, self.emb_time_dim)  # (B,L,emb)
@@ -92,8 +138,20 @@ class CSDI(nn.Module):
 
 
     def calc_loss_valid(
-        self, observed_data, presence_mask, side_info, is_train
-    ):
+        self, observed_data: torch.Tensor, presence_mask: torch.Tensor, side_info: torch.Tensor, is_train: bool
+    ) -> torch.Tensor:
+        """
+        Calculates the validation loss averaged over diffusion steps. 
+
+        Args:
+            observed_data (torch.Tensor): data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            side_info (torch.Tensor): side information tensor
+            is_train (bool): whether the model is in training mode
+
+        Returns:
+            torch.Tensor: average loss over diffusion steps
+        """
         loss_sum = 0
         for t in range(self.num_steps):  # calculate loss for all t
             loss = self.calc_loss(
@@ -104,8 +162,22 @@ class CSDI(nn.Module):
 
 
     def calc_loss(
-        self, observed_data, presence_mask, side_info, is_train, set_t=-1
-    ):
+        self, observed_data: torch.Tensor, presence_mask: torch.Tensor, side_info: torch.Tensor, is_train: bool, set_t: int=-1
+    ) -> torch.Tensor:
+        """
+        Performs a forward pass for a single random diffusion step and calculates the loss.
+        
+        Args:
+            observed_data (torch.Tensor): data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            side_info (torch.Tensor): side information tensor
+            is_train (bool): whether the model is in training mode
+            set_t (int): diffusion step to calculate loss for
+
+        Returns:
+            torch.Tensor: loss for the diffusion step
+        """
+        
         B, K, L = observed_data.shape
         if is_train != 1:  # for validation
             t = (torch.ones(B) * set_t).long().to(self.device)
@@ -126,7 +198,19 @@ class CSDI(nn.Module):
         return loss
 
 
-    def set_input_to_diffmodel(self, noisy_data, observed_data, presence_mask):
+    def set_input_to_diffmodel(self, noisy_data: torch.Tensor, observed_data: torch.Tensor, presence_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Concatenates the observed data and noisy data to create the input for the diffusion model.
+        The observed data is masked by the presence mask, and the noisy data is masked by the inverse of the presence mask.
+
+        Args:
+            noisy_data (torch.Tensor): noisy data tensor
+            observed_data (torch.Tensor): observed data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+        
+        Returns:
+            torch.Tensor: concatenated input tensor for the diffusion model
+        """
         cond_obs = (presence_mask * observed_data).unsqueeze(1)
         noisy_target = ((1 - presence_mask) * noisy_data).unsqueeze(1)
         total_input = torch.cat([cond_obs, noisy_target], dim=1)  # (B,2,K,L)
@@ -134,7 +218,28 @@ class CSDI(nn.Module):
         return total_input
 
 
-    def impute(self, observed_data, presence_mask, side_info, n_samples, gen_noise_magnitude=1):
+    def impute(
+        self,
+        observed_data: torch.Tensor,
+        presence_mask: torch.Tensor,
+        side_info: torch.Tensor,
+        n_samples: int,
+        gen_noise_magnitude: float=1.0
+        ):
+        """
+        Performs diffusion denoising to impute missing data in observed_data.
+
+        Args:
+            observed_data (torch.Tensor): data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            side_info (torch.Tensor): side information tensor
+            n_samples (int): number of samples to generate
+            gen_noise_magnitude (float): magnitude of noise to add during generation. 1.0 corresponds to the original noise level 
+                added during the forward process.
+
+        Returns:
+            torch.Tensor: imputed data tensor
+        """
         B, K, L = observed_data.shape
 
         if B == 1: # B will be 1 all of the time I think
@@ -169,7 +274,19 @@ class CSDI(nn.Module):
         return imputed_samples
 
 
-    def forward(self, observed_data, presence_mask, feature_id, is_train=1):
+    def forward(self, observed_data: torch.Tensor, presence_mask: torch.Tensor, feature_id: torch.Tensor, is_train: int=1) -> torch.Tensor:
+        """
+        Performs a forward pass through the model and calculates the loss. If is_train is 0, it performs multiple forward passes and calculates the average loss.
+
+        Args:
+            observed_data (torch.Tensor): data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            feature_id (torch.Tensor): tensor indicating the id of each feature
+            is_train (int): whether the model is in training mode
+
+        Returns:
+            torch.Tensor: loss tensor
+        """
         (
             observed_data, # [B, K, L]
             presence_mask, # [B, K, L]            
@@ -184,7 +301,28 @@ class CSDI(nn.Module):
         return loss_func(observed_data, presence_mask, side_info, is_train)
 
 
-    def generate(self, observed_data, presence_mask, feature_id, n_samples=1, gen_noise_magnitude=1):
+    def generate(
+        self,
+        observed_data: torch.Tensor,
+        presence_mask: torch.Tensor,
+        feature_id: torch.Tensor,
+        n_samples: int=1,
+        gen_noise_magnitude: float=1
+        ) -> torch.Tensor:
+        """
+        Imputes missing data in observed_data using the diffusion model. The model generates n_samples of imputed data.
+
+        Args:
+            observed_data (torch.Tensor): data tensor
+            presence_mask (torch.Tensor): mask indicating presence of data for training
+            feature_id (torch.Tensor): tensor indicating the id of each feature
+            n_samples (int): number of samples to generate
+            gen_noise_magnitude (float): magnitude of noise to add during generation. 1.0 corresponds to the original noise level 
+                added during the forward process.
+
+        Returns:
+            torch.Tensor: imputed data tensor
+        """
         (
             observed_data, # [B, K, L]
             presence_mask, # [B, K, L]

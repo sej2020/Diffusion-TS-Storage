@@ -168,7 +168,7 @@ if __name__ == '__main__':
     parser.add_argument("--end", type=str, required=True, help="End date for the query, please use format YYYY-MM-DD HH:MM:SS")
     parser.add_argument("--freq", type=str, required=True, 
         help="""
-        Frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1H for hourly data
+        Frequency of the data, in format <number><unit>, where unit is one of ms, s, m, h, D, W, M, Y, e.g. 1h for hourly data
         """)
     
     # Not Required
