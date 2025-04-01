@@ -33,21 +33,7 @@ with open(f'{args.save_folder}/config.yaml', 'w') as f:
     yaml.dump(config, f)
 
 
-train_loader, eval_loader, scaler, mean_scaler \
-    = get_dataloader(
-    dataset = config['data']['dataset'],
-    device = config['train']['device'],
-    save_folder = args.save_folder,
-    compression = config['compression']['compression_rate'],
-    feature_retention_strategy = config['compression']['feature_retention_strategy'],
-    history_block_size = config['compression']['history_block_size'],
-    data_to_model_ratio = config['compression']['data_to_model_ratio'],
-    history_to_feature_ratio = config['compression']['history_to_feature_ratio'],
-    window_length = config['train']['window_length'],
-    training_feature_sample_size = config['model']['training_feature_sample_size'],
-    data_dayfirst = config['data']['day_first'],
-    selected_features = config['compression']['selected_features'] if config['compression']['feature_retention_strategy'] == 'select' else None,
-    )
+train_loader, eval_loader, scaler, mean_scaler = get_dataloader(config_name=args.config, save_folder=args.save_folder)
 
 model = CSDI(config, train_loader.dataset.main_data.shape[1], device=config['train']['device']).to(config['train']['device'])
 train(model, config['train'], train_loader, args.save_folder)

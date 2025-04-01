@@ -193,64 +193,53 @@ class ConditionalDataset(Dataset):
             print(f"Expected compression: {self.compression}\nActual: {round(actual_compression, 4)}")
 
 
-def get_dataloader(
-    dataset,
-    device,
-    save_folder,
-    compression,
-    feature_retention_strategy,
-    history_block_size,
-    data_to_model_ratio,
-    history_to_feature_ratio,
-    window_length,
-    training_feature_sample_size,
-    data_dayfirst = False,
-    **kwargs
-    ):
+def get_dataloader(config_name: str, save_folder: str):
+
+    with open(f"config/{config_name}.yaml", 'r') as f:
+        config = yaml.safe_load(f)
 
     conditional_dataset_train = ConditionalDataset(
-        dataset = dataset,
-        device = device,
+        dataset = config['data']['dataset'],
+        device = config['train']['device'],
         save_folder = save_folder,
-        compression = compression,
-        feature_retention_strategy = feature_retention_strategy,
-        history_block_size = history_block_size,
-        data_to_model_ratio = data_to_model_ratio,
-        history_to_feature_ratio = history_to_feature_ratio,
-        window_length = window_length,
-        training_feature_sample_size = training_feature_sample_size,
-        data_dayfirst = data_dayfirst,
-        **kwargs
+        compression = config['compression']['compression_rate'],
+        feature_retention_strategy = config['compression']['feature_retention_strategy'],
+        history_block_size = config['compression']['history_block_size'],
+        data_to_model_ratio = config['compression']['data_to_model_ratio'],
+        history_to_feature_ratio = config['compression']['history_to_feature_ratio'],
+        window_length = config['train']['window_length'],
+        training_feature_sample_size = config['model']['training_feature_sample_size'],
+        data_dayfirst = config['data']['day_first'],
+        selected_features = config['compression']['selected_features'] if config['compression']['feature_retention_strategy'] == 'select' else None,
         )
     
     conditional_dataset_eval = ConditionalDataset(
-        dataset = dataset,
-        device = device,
+        dataset = config['data']['dataset'],
+        device = config['train']['device'],
         save_folder = save_folder,
-        compression = compression,
-        feature_retention_strategy = feature_retention_strategy,
-        history_block_size = history_block_size,
-        data_to_model_ratio = data_to_model_ratio,
-        history_to_feature_ratio = history_to_feature_ratio,
-        window_length = window_length,
-        training_feature_sample_size = training_feature_sample_size,
-        data_dayfirst = data_dayfirst,
+        compression = config['compression']['compression_rate'],
+        feature_retention_strategy = config['compression']['feature_retention_strategy'],
+        history_block_size = config['compression']['history_block_size'],
+        data_to_model_ratio = config['compression']['data_to_model_ratio'],
+        history_to_feature_ratio = config['compression']['history_to_feature_ratio'],
+        window_length = config['train']['window_length'],
+        training_feature_sample_size = config['model']['training_feature_sample_size'],
+        data_dayfirst = config['data']['day_first'],
         train = False,
-        **kwargs
+        selected_features = config['compression']['selected_features'] if config['compression']['feature_retention_strategy'] == 'select' else None,
         )
     
-    scaler = torch.from_numpy(conditional_dataset_train.std_data).to(device).float()
-    mean_scaler = torch.from_numpy(conditional_dataset_train.mean_data).to(device).float()
+    scaler = torch.from_numpy(conditional_dataset_train.std_data).to(config['train']['device']).float()
+    mean_scaler = torch.from_numpy(conditional_dataset_train.mean_data).to(config['train']['device']).float()
 
-    # with open(f"config/train_config.yaml", 'r') as f:
-        # config = yaml.safe_load(f)
 
     train_loader = DataLoader(
-        conditional_dataset_train, batch_size=16, shuffle=1)
-        # conditional_dataset_train, batch_size=config['train']['batch_size'], shuffle=1)
+        conditional_dataset_train, batch_size=config['train']['batch_size'], shuffle=1
+        )
 
     eval_loader = DataLoader(
-        conditional_dataset_eval, batch_size=1, shuffle=0)
+        conditional_dataset_eval, batch_size=1, shuffle=0
+        )
 
     return train_loader, eval_loader, scaler, mean_scaler
 
@@ -267,7 +256,6 @@ def pca_sorted_features(data: np.ndarray) -> list:
     Returns:
         list: A list of indices of the features sorted by their absolute loadings.
     """
-    print('\n$$$ PCA $$$\n')
     pca = PCA(n_components=1)
     pca.fit(data)
     sorted_features = np.argsort(np.abs(pca.components_))[0].tolist()

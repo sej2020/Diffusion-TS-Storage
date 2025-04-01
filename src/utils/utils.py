@@ -210,4 +210,4 @@ def evaluate(model, test_loader, scaler, save_folder):
     print("Normalized MAE:", NMAE)
 
     with open(f"{save_folder}/result.yaml", "w") as f:
-        yaml.dump({"RMSE": RMSE, "MAE": MAE, "Normalized RMSE": NRMSE, "Normalized MAE": NMAE}, f)
+        yaml.dump({"RMSE": float(RMSE), "MAE": float(MAE), "Normalized RMSE": float(NRMSE), "Normalized MAE": float(NMAE)}, f)
