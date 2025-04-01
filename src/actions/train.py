@@ -7,89 +7,48 @@ from src.model.main_model import CSDI
 
 parser = argparse.ArgumentParser(description="Training a model")
 
-def fraction_to_float(fraction: str) -> float:
-    frac = fraction.split("/")
-    return int(frac[0]) / int(frac[1])
-
-# high-level options
-parser.add_argument(
-    "--dataset", type=str, required=True, 
-    help="Please provide the dataset name (e.g. electricity, weather, etc.)"
-    )
 parser.add_argument(
     "--save_folder", type=str, required=True,
-    help="The folder where the model and mask will be stored"
-    )
-parser.add_argument(
-    "--device", type=str, default="cuda:0", 
-    help="The device to use for training"
-    )
-parser.add_argument(
-    "--compression", type=fraction_to_float, default=1/2,
-    help="The fraction of original dataset that we keep"
+    help="The folder name where the model and mask will be stored"
     )
 
-
-# hyperparameters
 parser.add_argument(
-    "--feature_retention_strategy", choices=["pca loadings"], default="pca loadings", 
-    help="The strategy for selecting features to retain as conditional data"
-    )
-parser.add_argument(
-    "--history_block_size", type=int, choices=[2**i for i in range(0, 9)], default=2, 
-    help="""
-    The number of continuous time points in every block of retained historical data. 
-    This will not change the total number of historical data points that are preserved
-    """
-    )
-parser.add_argument(
-    "--model_param_proportion", type=fraction_to_float, default=1/2,
-    help="""
-    To compress the data, some of the info will be preserved as model weights, while some of the info will be conditional data.
-    This is the proportion of the retained info that will persist as model parameters (thereby determining model size) vs. conditional data.
-    E.g. 1/2 means that half of the memory dedicated to this compressed data will be model weights, while half will be real data.
-    """
-    )
-parser.add_argument(
-    "--history_to_feature_ratio", type=float, default=1.0, 
-    help="The ratio of preserved points in the data coming from time slices (historical data) vs features"
-    )
-parser.add_argument(
-    "--window_length", type=int, default=168,
-    help="The time dimension of the training window"
+    "--config", type=str, required=True,
+    help="The name of the config file to use for training. Should be in the config folder."
 )
-
-# rare flags
-parser.add_argument(
-    "--data_dayfirst", action="store_true", # by default, this is False
-    help="Whether your data csv has the day as the first element in the date string"
-    ) # necessary for weather dataset
 
 args = parser.parse_args()
 
 
 os.makedirs(args.save_folder, exist_ok=True)
-with open('config/train_config.yaml', 'r') as f:
+with open(f'config/{args.config}.yaml', 'r') as f:
     config = yaml.safe_load(f)
+
+if config['compression']['feature_retention_strategy'] == 'select':
+    assert 'selected_features' in config['compression'], f"Please provide a selected_features list in the config file under the 'compression' section. \
+        This is required for the feature retention strategy to be 'select.'"
+
 with open(f'{args.save_folder}/config.yaml', 'w') as f:
     yaml.dump(args.__dict__, f)
     yaml.dump(config, f)
 
+
 train_loader, eval_loader, scaler, mean_scaler \
     = get_dataloader(
-    dataset = args.dataset,
-    device = args.device,
+    dataset = config['data']['dataset'],
+    device = config['train']['device'],
     save_folder = args.save_folder,
-    compression = args.compression,
-    feature_retention_strategy = args.feature_retention_strategy,
-    history_block_size = args.history_block_size,
-    model_param_proportion = args.model_param_proportion,
-    history_to_feature_ratio = args.history_to_feature_ratio,
-    window_length = args.window_length,
+    compression = config['compression']['compression_rate'],
+    feature_retention_strategy = config['compression']['feature_retention_strategy'],
+    history_block_size = config['compression']['history_block_size'],
+    data_to_model_ratio = config['compression']['data_to_model_ratio'],
+    history_to_feature_ratio = config['compression']['history_to_feature_ratio'],
+    window_length = config['train']['window_length'],
     training_feature_sample_size = config['model']['training_feature_sample_size'],
-    data_dayfirst = args.data_dayfirst
+    data_dayfirst = config['data']['day_first'],
+    selected_features = config['compression']['selected_features'] if config['compression']['feature_retention_strategy'] == 'select' else None,
     )
 
-model = CSDI(config, train_loader.dataset.main_data.shape[1], args.device).to(args.device)
+model = CSDI(config, train_loader.dataset.main_data.shape[1], device=config['train']['device']).to(config['train']['device'])
 train(model, config['train'], train_loader, args.save_folder)
 evaluate(model, eval_loader, scaler, args.save_folder)
