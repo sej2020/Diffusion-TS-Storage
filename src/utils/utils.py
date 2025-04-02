@@ -165,8 +165,7 @@ def evaluate(model, test_loader, scaler, save_folder):
                 presence_mask = test_batch['presence_mask'] # [1, L, K]
                 feature_id = test_batch['feature_id'] # [1, K]
 
-                # [1, L, K]
-                samples = model.generate(observed_data, presence_mask, feature_id, gen_noise_magnitude=0)
+                samples = model.generate(observed_data, presence_mask, feature_id, gen_noise_magnitude=0).squeeze(0) # [1, L, K]
 
                 target_mask = 1 - presence_mask # [1, L, K]
                 target = observed_data # [1, L, K]

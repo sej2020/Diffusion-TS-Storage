@@ -240,38 +240,59 @@ class CSDI(nn.Module):
         Returns:
             torch.Tensor: imputed data tensor
         """
-        B, K, L = observed_data.shape
+        B, SI, K, L = side_info.shape
+        # B = batch size, SI = side info dim, K = number of features, L = length of time series
 
-        if B == 1: # B will be 1 all of the time I think
-            observed_data = observed_data.expand(n_samples, -1, -1)
-            presence_mask = presence_mask.expand(n_samples, -1, -1)
-            side_info = side_info.expand(n_samples, -1, -1, -1)
-        else:
-            raise ValueError("Batch size should be set to 1 for generation.")
+        observed_data = observed_data.unsqueeze(1).expand(-1, n_samples, -1, -1) # [B, NS, K, L]
+        # when reshaping, moving along the row stays contiguous. [B, NS, K, L] -> [B*NS, K, L] = 1st dim is [B1 B1 B1 ... B2 B2 B2 ...]
+        observed_data = observed_data.reshape(B * n_samples, K, L) # [B*NS, K, L]
 
-        current_sample = torch.randn_like(observed_data)
+        presence_mask = presence_mask.unsqueeze(1).expand(-1, n_samples, -1, -1) # [B, NS, K, L]
+        presence_mask = presence_mask.reshape(B * n_samples, K, L) # [B*NS, K, L]
 
-        for t in range(self.num_steps - 1, -1, -1):
-            cond_obs = (presence_mask * observed_data).unsqueeze(1)
-            noisy_target = ((1 - presence_mask) * current_sample).unsqueeze(1)
-            diff_input = torch.cat([cond_obs, noisy_target], dim=1)  # (B,2,K,L)
+        side_info = side_info.unsqueeze(1).expand(-1, n_samples, -1, -1, -1) # [B, NS, SI, K, L]
+        side_info = side_info.reshape(B * n_samples, SI, K, L) # [B*NS, SI, K, L]
 
-            predicted = self.diffmodel(diff_input, side_info, torch.tensor([t]).to(self.device))
 
-            coeff1 = 1 / self.alpha_hat[t] ** 0.5
-            coeff2 = (1 - self.alpha_hat[t]) / (1 - self.alpha[t]) ** 0.5
-            current_sample = coeff1 * (current_sample - coeff2 * predicted)
+        # break observed_data up into chunks of size 16 along first dimension
+        
+        observed_data_split = torch.split(observed_data, 16, dim=0)
+        presence_mask_split = torch.split(presence_mask, 16, dim=0)
+        side_info_split = torch.split(side_info, 16, dim=0)
 
-            if t > 0:
-                noise = torch.randn_like(current_sample) * gen_noise_magnitude
-                sigma = (
-                    (1.0 - self.alpha[t - 1]) / (1.0 - self.alpha[t]) * self.beta[t]
-                ) ** 0.5
-                current_sample += sigma * noise
+        imputed_samples = []
 
-        imputed_samples = current_sample * (1 - presence_mask) + observed_data * presence_mask
+        for chunk_id in range(len(observed_data_split)):
+            observed_data_chunk = observed_data_split[chunk_id]
+            presence_mask_chunk = presence_mask_split[chunk_id]
+            side_info_chunk = side_info_split[chunk_id]
 
-        return imputed_samples
+            current_sample = torch.randn_like(observed_data_chunk)
+
+            for t in range(self.num_steps - 1, -1, -1):
+                cond_obs = (presence_mask_chunk * observed_data_chunk).unsqueeze(1)
+                noisy_target = ((1 - presence_mask_chunk) * current_sample).unsqueeze(1)
+                diff_input = torch.cat([cond_obs, noisy_target], dim=1)  # (B,2,K,L)
+
+                predicted = self.diffmodel(diff_input, side_info_chunk, torch.tensor([t]).to(self.device))
+
+                coeff1 = 1 / self.alpha_hat[t] ** 0.5
+                coeff2 = (1 - self.alpha_hat[t]) / (1 - self.alpha[t]) ** 0.5
+                current_sample = coeff1 * (current_sample - coeff2 * predicted)
+
+                if t > 0:
+                    noise = torch.randn_like(current_sample) * gen_noise_magnitude
+                    sigma = (
+                        (1.0 - self.alpha[t - 1]) / (1.0 - self.alpha[t]) * self.beta[t]
+                    ) ** 0.5
+                    current_sample += sigma * noise
+
+            imputed_samples.append(current_sample * (1 - presence_mask_chunk) + observed_data_chunk * presence_mask_chunk)
+
+        imputed_samples = torch.cat(imputed_samples, dim=0) # [B*NS, K, L]
+        imputed_samples = imputed_samples.reshape(B, n_samples, K, L) # [B, NS, K, L]
+
+        return imputed_samples # [B, n_samples, K, L]
 
 
     def forward(self, observed_data: torch.Tensor, presence_mask: torch.Tensor, feature_id: torch.Tensor, is_train: int=1) -> torch.Tensor:
@@ -332,6 +353,6 @@ class CSDI(nn.Module):
 
         with torch.no_grad():
             side_info = self.get_side_info(observed_tp, presence_mask, feature_id)
-            samples = self.impute(observed_data, presence_mask, side_info, n_samples, gen_noise_magnitude)
+            samples = self.impute(observed_data, presence_mask, side_info, n_samples, gen_noise_magnitude) # [B, n_samples, K, L]
         
-        return samples.permute(0, 2, 1) # [n_samples, L, K]
+        return samples.permute(0, 1, 3, 2)  # [B, n_samples, L, K]

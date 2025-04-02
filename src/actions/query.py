@@ -97,7 +97,10 @@ def query(
     all_query_vars = torch.tensor(all_query_vars).unsqueeze(0)
 
     # querying the model
-    samples = model.generate(data_slice, presence_mask_slice, all_query_vars, n_generations, gen_noise_magnitude) 
+    samples = model.generate(data_slice, presence_mask_slice, all_query_vars, n_generations, gen_noise_magnitude) # [B, n_samples, L, K]
+
+    # removing the batch dimension (since there is only one batch)
+    samples = samples.squeeze(0)
 
     # denormalizing the data
     samples = samples.cpu().numpy() * (stds[all_query_vars] + 1e-9) + means[all_query_vars]
