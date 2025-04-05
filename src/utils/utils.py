@@ -107,16 +107,14 @@ def data_csv_to_pkl(dataset_path: str, save_folder: str, dayfirst: bool = False)
 
 
 def train(model, config, train_loader, save_folder):
-    
     # optimization
     optimizer = Adam(model.parameters(), lr=config["lr"], weight_decay=1e-6)
-    p1 = int(0.75 * config["epochs"])
-    p2 = int(0.9 * config["epochs"])
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[p1, p2], gamma=0.1
+
+    lr_scheduler = torch.optim.lr_scheduler.CyclicLR(
+        optimizer, base_lr=config["lr"] * 0.1, max_lr=config["lr"], step_size_up=10, mode='triangular2'
     )
 
-    best_training_loss = 1e10
+    best_training_losses = set((1e10, 1e11, 1e12))
     for epoch in range(config["epochs"]):
         avg_loss = 0
         model.train()
@@ -139,14 +137,18 @@ def train(model, config, train_loader, save_folder):
             lr_scheduler.step()
 
         avg_loss /= len(train_loader)
-        if avg_loss < best_training_loss:
-            best_training_loss = avg_loss
+        if avg_loss < min(best_training_losses):
+            print(f"Saving best model at epoch {epoch}")
+            torch.save(model.state_dict(), f"{save_folder}/model_best.pth")
+        if any(avg_loss < loss for loss in best_training_losses):
+            best_training_losses.add(avg_loss)
+            best_training_losses.remove(max(best_training_losses))
+            print(f"Best training loss: {avg_loss}")
         else:
             print("Early stopping")
             break
+        print(best_training_losses)
     print(f"Epoch {epoch}: avg_loss {avg_loss}")
-
-    torch.save(model.state_dict(), f"{save_folder}/model.pth")
 
 
 def evaluate(model, test_loader, scaler, save_folder):

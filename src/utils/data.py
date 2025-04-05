@@ -86,14 +86,15 @@ class ConditionalDataset(Dataset):
             
             # if len(selected_features) > self.n_feature_slices, then it will be truncated to n_feature_slices
             selected_feature_idxs = [var_names[v] for v in kwargs['selected_features']][:self.n_feature_slices]
+            
             # but if not, we fill the rest with the most useful features
             useful_idx = 0
-
-            while len(selected_feature_idxs) < self.n_feature_slices:
+            selected_pca_features = []
+            while len(selected_feature_idxs) + len(selected_pca_features) < self.n_feature_slices:
                 if most_useful[useful_idx] not in selected_feature_idxs:
-                    selected_feature_idxs.append(most_useful[useful_idx])
+                    selected_pca_features.append(most_useful[useful_idx])
                 useful_idx += 1
-            self.condit_feature_idx = selected_feature_idxs
+            self.condit_feature_idx = selected_pca_features + selected_feature_idxs # need pca features to show up first for querying purposes
             
         mask_metadata = {
             'condit_feature_idx': self.condit_feature_idx, 
