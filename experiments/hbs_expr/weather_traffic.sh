@@ -1,0 +1,11 @@
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/weather/hbs1' --config 'weather_config' --hbs 1 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/weather/hbs2' --config 'weather_config' --hbs 2 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/weather/hbs4' --config 'weather_config' --hbs 4 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/weather/hbs8' --config 'weather_config' --hbs 8 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/weather/hbs16' --config 'weather_config' --hbs 16 --device 'cuda:1'
+
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/traffic/hbs1' --config 'traffic_config' --hbs 1 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/traffic/hbs2' --config 'traffic_config' --hbs 2 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/traffic/hbs4' --config 'traffic_config' --hbs 4 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/traffic/hbs8' --config 'traffic_config' --hbs 8 --device 'cuda:1'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/traffic/hbs16' --config 'traffic_config' --hbs 16 --device 'cuda:1'

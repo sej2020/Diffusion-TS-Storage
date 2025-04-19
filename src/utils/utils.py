@@ -1,4 +1,5 @@
 import pickle
+import math
 import pandas as pd
 import numpy as np
 import torch
@@ -6,6 +7,63 @@ from torch.optim import Adam
 from tqdm import tqdm
 import os
 import yaml
+from src.model.main_model import CSDI
+import warnings
+
+
+def adjust_model_architecture(config: dict, dataset_len: int, dataset_dim: int) -> dict:
+    """
+    Calculates the number of parameters permitted for the model based on the compression rate and data to model ratio.
+    If the requested number of parameters is greater than the permitted number, the model architecture is adjusted to fit within the limits.
+    If the requested number of parameters is less than the permitted number, the data to model ratio is adjusted to fit within the limits.
+
+    Args:
+        config (dict): the configuration dictionary
+        dataset_len (int): the number of timesteps in the dataset
+        dataset_dim (int): the number of features in the dataset
+
+    Returns:
+        config (dict): the updated configuration dictionary
+    """
+    dummy_model = CSDI(config, dataset_dim, device=config['train']['device'])
+    requested_params = sum(p.numel() for p in dummy_model.parameters() if p.requires_grad)
+    del dummy_model
+
+    total_datapoints = dataset_len * dataset_dim
+    comp_rate = config['compression']['compression_rate']
+    data_to_model_ratio = config['compression']['data_to_model_ratio']
+
+    data_point_percnt = data_to_model_ratio / (data_to_model_ratio + 1)
+    n_params_allowed = int(comp_rate * total_datapoints * (1 - data_point_percnt))
+    
+    assert n_params_allowed > 50_000, f"The model must have at least 50000 parameters (approx.). With the current config, only {n_params_allowed} parameters can be allocated to the model. Please adjust the compression rate up or data to model ratio down."
+
+    if n_params_allowed > requested_params:
+        warnings.warn(f"You have requested a model with {requested_params} parameters. For your chosen compression rate of {comp_rate} and data to model ratio of {data_to_model_ratio}, \
+you may have up to {n_params_allowed} parameters. Your data to model ratio will be increased accordingly.")
+        total_allowed = comp_rate * total_datapoints
+        n_datapoints_allowed = total_allowed - requested_params
+        data_to_model_ratio = math.floor((n_datapoints_allowed / requested_params)*10)/10
+        config['compression']['data_to_model_ratio'] = data_to_model_ratio
+    else:
+        new_requested_params = requested_params
+        while new_requested_params > n_params_allowed:
+            if config['diffusion']['channels'] / config['diffusion']['layers'] > 12: # try to maintain at least a 12:1 ratio
+                config['diffusion']['channels'] -= 8
+                config['diffusion']['nheads'] -= 1 # channels / nheads must be 8
+            else:
+                config['diffusion']['layers'] -= 1
+            
+            dummy_model = CSDI(config, dataset_dim, device=config['train']['device'])
+            new_requested_params = sum(p.numel() for p in dummy_model.parameters() if p.requires_grad)
+            del dummy_model
+
+        warnings.warn(f"The model architecture specified in the config file has {requested_params} parameters, which is too large for a compression rate of {comp_rate} \
+and a data to model ratio of {data_to_model_ratio}. The model architecture has been adjusted to have {new_requested_params} parameters.")
+        warnings.warn(f"The model now has {config['diffusion']['layers']} layers, {config['diffusion']['channels']} channels, and {config['diffusion']['nheads']} heads.")
+
+    return config
+
 
 def gen_mask(features_in_window: np.ndarray, start_idx: int, end_idx: int, save_folder: str) -> np.ndarray:
     """
@@ -67,6 +125,7 @@ def data_csv_to_pkl(dataset_path: str, save_folder: str, dayfirst: bool = False)
     Returns:
         None
     """
+    os.makedirs(save_folder, exist_ok=True)
     data_df = pd.read_csv(dataset_path, encoding='unicode-escape', index_col=0)
     
     # mean and std
@@ -139,7 +198,7 @@ def train(model, config, train_loader, save_folder):
         avg_loss /= len(train_loader)
         if avg_loss < min(best_training_losses):
             print(f"Saving best model at epoch {epoch}")
-            torch.save(model.state_dict(), f"{save_folder}/model_best.pth")
+            torch.save(model.state_dict(), f"{save_folder}/model.pth")
         if any(avg_loss < loss for loss in best_training_losses):
             best_training_losses.add(avg_loss)
             best_training_losses.remove(max(best_training_losses))
@@ -163,14 +222,14 @@ def evaluate(model, test_loader, scaler, save_folder):
 
         with tqdm(test_loader, mininterval=5.0, maxinterval=50.0) as it:
             for batch_num, test_batch in enumerate(it, start=1):
-                observed_data = test_batch['observed_data'] # [1, L, K]
-                presence_mask = test_batch['presence_mask'] # [1, L, K]
-                feature_id = test_batch['feature_id'] # [1, K]
+                observed_data = test_batch['observed_data'] # [B, L, K]
+                presence_mask = test_batch['presence_mask'] # [B, L, K]
+                feature_id = test_batch['feature_id'] # [B, K]
 
-                samples = model.generate(observed_data, presence_mask, feature_id, gen_noise_magnitude=0).squeeze(0) # [1, L, K]
+                samples = model.generate(observed_data, presence_mask, feature_id, gen_noise_magnitude=0).squeeze(1) # [B, L, K]
 
-                target_mask = 1 - presence_mask # [1, L, K]
-                target = observed_data # [1, L, K]
+                target_mask = 1 - presence_mask # [B, L, K]
+                target = observed_data # [B, L, K]
                 # put target and target_mask to the same device as samples
                 target = target.to(samples.device)
                 target_mask = target_mask.to(samples.device)

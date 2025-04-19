@@ -7,24 +7,24 @@ data:
 
 compression:
   compression_rate: 0.5
-  feature_retention_strategy: "select" # [pca or select]
-  history_block_size: 8
+  feature_retention_strategy: "pca" # [pca or select]
+  history_block_size: 1
   data_to_model_ratio: 1.0
   history_to_feature_ratio: 2.0
-  selected_features: ['U98', 'U42', 'U69']
+  # selected_features: ['U98', 'U42', 'U69']
 
 train:
-  epochs: 1 # [100]
-  batch_size: 8 # [8]
+  epochs: 100 # [100]
+  batch_size: 16 # [16]
   lr: 1.0e-3
   window_length: 168
   device: "cuda:0" # [cuda:0]
 
 diffusion:
-  layers: 4 
-  channels: 32 # [64]
-  nheads: 4 # [8]
-  diffusion_embedding_dim: 64 # [128]
+  layers: 4 # [4]
+  channels: 64 # [64]
+  nheads: 8 # [8] should be 1/8 number of channels
+  diffusion_embedding_dim: 128 # [128]
   beta_start: 0.0001
   beta_end: 0.5
   num_steps: 50

@@ -54,13 +54,9 @@ class ConditionalDataset(Dataset):
         T, N = self.main_data.shape
         n_total_points = T * N
         n_compressed_points = int(n_total_points * self.compression)
-        ### We want to keep a certain proportion of the data as model parameters: 
-        ###   data_point_percnt = data_to_model_ratio / data_to_model_ratio + 1
-        ###   n_model_points = int(n_compressed_points * (1 - data_point_percnt))
-        ### but for right now, it is just the base model, which has about 600k parameters
-        self.n_model_points = 616033 
-        assert self.n_model_points < n_compressed_points, "Model parameters are more than the compressed data, please make your model smaller"
-        exp_n_condit_points = n_compressed_points - self.n_model_points
+        data_point_percnt = data_to_model_ratio / (data_to_model_ratio + 1)
+
+        exp_n_condit_points = int(n_compressed_points * data_point_percnt)
         exp_point_compression = exp_n_condit_points / n_total_points
 
         # sets number of history slices and features retained
@@ -187,17 +183,25 @@ class ConditionalDataset(Dataset):
 
         # verify that the math is correct
         self.n_condit_points = int(self.n_history_slices*N + self.n_feature_slices*T - self.n_history_slices*self.n_feature_slices)
-        print(f"Expected points retained: {int(T*N*C)},\nActual: {self.n_condit_points}")
-        if not math.isclose(self.n_condit_points, T*N*C, rel_tol=.01):
-            actual_compression = (self.n_condit_points + self.n_model_points) / (T*N)
-            print("Warning compression is off by more than 1%")
-            print(f"Expected compression: {self.compression}\nActual: {round(actual_compression, 4)}")
+        print(f"Expected datapoints retained: {int(T*N*C)},\nActual: {self.n_condit_points}")
 
 
-def get_dataloader(config_name: str, save_folder: str):
+def get_dataloader(config: str | dict, save_folder: str) -> tuple[DataLoader, DataLoader, torch.Tensor, torch.Tensor]:
+    """
+    Creates the dataloaders for the training and evaluation datasets.
 
-    with open(f"config/{config_name}.yaml", 'r') as f:
-        config = yaml.safe_load(f)
+    Args:
+        config (str | dict): The configuration file or configuration dictionary containing the dataset parameters.
+        save_folder (str): The folder where the data is to be saved.
+
+    Returns:
+        tuple: A tuple containing the training dataloader, evaluation dataloader, stdev tensor, and mean tensor.
+    """
+
+    if isinstance(config, str):
+        config_name = config
+        with open(config_name, 'r') as f:
+            config = yaml.safe_load(f)
 
     conditional_dataset_train = ConditionalDataset(
         dataset = config['data']['dataset'],
@@ -239,7 +243,7 @@ def get_dataloader(config_name: str, save_folder: str):
         )
 
     eval_loader = DataLoader(
-        conditional_dataset_eval, batch_size=1, shuffle=0
+        conditional_dataset_eval, batch_size=2, shuffle=0
         )
 
     return train_loader, eval_loader, scaler, mean_scaler

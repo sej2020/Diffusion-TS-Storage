@@ -2,14 +2,14 @@
 # [Default]
 
 data:
-  dataset: "electricity" # [electricity]
+  dataset: "weather" # [electricity]
   day_first: False
 
 compression:
-  compression_rate: 0.25
+  compression_rate: 0.5
   feature_retention_strategy: "pca" # [pca or select]
   history_block_size: 1
-  data_to_model_ratio: 0.5
+  data_to_model_ratio: 1.0
   history_to_feature_ratio: 2.0
   # selected_features: ['U98', 'U42', 'U69']
 

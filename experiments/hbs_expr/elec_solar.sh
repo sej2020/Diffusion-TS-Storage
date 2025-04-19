@@ -1,0 +1,11 @@
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/electricity/hbs1' --config 'electricity_config' --hbs 1 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/electricity/hbs2' --config 'electricity_config' --hbs 2 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/electricity/hbs4' --config 'electricity_config' --hbs 4 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/electricity/hbs8' --config 'electricity_config' --hbs 8 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/electricity/hbs16' --config 'electricity_config' --hbs 16 --device 'cuda:0'
+
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/solar/hbs1' --config 'solar_config' --hbs 1 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/solar/hbs2' --config 'solar_config' --hbs 2 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/solar/hbs4' --config 'solar_config' --hbs 4 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/solar/hbs8' --config 'solar_config' --hbs 8 --device 'cuda:0'
+python -m experiments.hbs_expr.run_expr --save_folder 'experiments/hbs_expr/results/solar/hbs16' --config 'solar_config' --hbs 16 --device 'cuda:0'

@@ -1,5 +1,8 @@
 /save
-nohup.out
+nohup*
 data/
 *.log
 *_test/
+messin_around/
+**/results
+*.pyc
