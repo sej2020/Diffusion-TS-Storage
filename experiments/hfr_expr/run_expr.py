@@ -20,18 +20,24 @@ parser.add_argument(
     help="The name of the config file to use for training. Should be in the config folder."
 )
 
-args = parser.parse_args()
+#### EXPERIMENT ARGUMENTS ####
+parser.add_argument("--device", type=str)
+parser.add_argument("--hfr", type=float)
+##############################
 
+args = parser.parse_args()
 
 os.makedirs(args.save_folder, exist_ok=True)
 with open(f'config/{args.config}.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
-if config['compression']['feature_retention_strategy'] == 'select':
-    assert 'selected_features' in config['compression'], f"Please provide a selected_features list in the config file under the 'compression' section. \
-        This is required for the feature retention strategy to be 'select.'"
 assert config['diffusion']['channels'] / config['diffusion']['nheads'] == 8.0, "The number of channels divided by the number of heads must be 8."
 assert config['compression']['data_to_model_ratio'] > 0.1, "The data to model ratio must be greater than 0.1."
+
+### EXPERIMENT CONFIGURATION ###
+config['compression']['history_to_feature_ratio'] = args.hfr
+config['train']['device'] = args.device
+################################
 
 # should be a db call in the future
 with open(f'data/{config["data"]["dataset"]}/data.pkl', 'rb') as f:
@@ -43,7 +49,7 @@ config = adjust_model_architecture(config, dataset_len, dataset_dim)
 
 with open(f'{args.save_folder}/config.yaml', 'w') as f:
     yaml.dump(args.__dict__, f)
-    yaml.dump(config, f) # dump out the config before the dataloader runs
+    yaml.dump(config, f) # dump out the config after edits before the dataloader runs
 
 train_loader, eval_loader, scaler, mean_scaler = get_dataloader(config=f'{args.save_folder}/config.yaml', save_folder=args.save_folder)
 
@@ -66,3 +72,8 @@ train(model, config['train'], train_loader, args.save_folder)
 # load best model for evaluation
 model.load_state_dict(torch.load(f"{args.save_folder}/model.pth", weights_only=True))
 evaluate(model, eval_loader, scaler, args.save_folder)
+
+try:
+    os.remove(f"{args.save_folder}/model.pth")
+except Exception as e:
+    pass

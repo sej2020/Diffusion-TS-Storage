@@ -9,6 +9,7 @@ import os
 import yaml
 from src.model.main_model import CSDI
 import warnings
+from fvcore.nn import FlopCountAnalysis
 
 
 def adjust_model_architecture(config: dict, dataset_len: int, dataset_dim: int) -> dict:
@@ -173,6 +174,8 @@ def train(model, config, train_loader, save_folder):
         optimizer, base_lr=config["lr"] * 0.1, max_lr=config["lr"], step_size_up=10, mode='triangular2'
     )
 
+    total_forward_passes = 0
+
     best_training_losses = set((1e10, 1e11, 1e12))
     for epoch in range(config["epochs"]):
         avg_loss = 0
@@ -184,7 +187,12 @@ def train(model, config, train_loader, save_folder):
                 feature_id = train_batch['feature_id']
                 optimizer.zero_grad()
 
+                if epoch == 1 and batch_num == 5:
+                    flops = FlopCountAnalysis(model, (observed_data, presence_mask, feature_id)).total()
+
                 loss = model(observed_data, presence_mask, feature_id, is_train=1)
+                total_forward_passes += 1
+
                 loss.backward()
                 avg_loss += loss.item()
                 optimizer.step()
@@ -208,6 +216,10 @@ def train(model, config, train_loader, save_folder):
             break
         print(best_training_losses)
     print(f"Epoch {epoch}: avg_loss {avg_loss}")
+
+    # reporting metrics
+    with open(f"{save_folder}/flops.yaml", "w") as f:
+        yaml.dump({"flops_per_forward_pass": flops, "total_forward_passes": total_forward_passes}, f)
 
 
 def evaluate(model, test_loader, scaler, save_folder):

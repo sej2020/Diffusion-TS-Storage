@@ -1,0 +1,7 @@
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr0_25' --config 'solar_config' --hfr 0.25 --device 'cuda:0'
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr0_5' --config 'solar_config' --hfr 0.5 --device 'cuda:0'
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr1_0' --config 'solar_config' --hfr 1.0 --device 'cuda:0'
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr2_0' --config 'solar_config' --hfr 2.0 --device 'cuda:0'
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr4_0' --config 'solar_config' --hfr 4.0 --device 'cuda:0'
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr8_0' --config 'solar_config' --hfr 8.0 --device 'cuda:0'
+python -m experiments.hfr_expr.run_expr --save_folder 'experiments/hfr_expr/results/run1/solar/hfr16_0' --config 'solar_config' --hfr 16.0 --device 'cuda:0'

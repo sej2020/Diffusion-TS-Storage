@@ -60,6 +60,12 @@ n_model_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 total_dataset = train_loader.dataset.main_data.shape[0] * train_loader.dataset.main_data.shape[1]
 warnings.warn(f"Requested compression rate: {config['compression']['compression_rate']}\nActual compression rate: {(n_condit_points + n_model_params) / total_dataset}")
 
+# now add number of parameters to the config file
+with open(f'{args.save_folder}/config.yaml', 'a') as f:
+    f.write(f"n_model_params: {n_model_params}\n")
+    f.write(f"n_condit_points: {n_condit_points}\n")
+    f.write(f"total_dataset: {total_dataset}\n")
+
 # trains and saves best model
 train(model, config['train'], train_loader, args.save_folder)
 
